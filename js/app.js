@@ -51,8 +51,27 @@ window.App = window.App || {};
     tempoAviso = setTimeout(() => t.remove(), 3500);
   };
 
+  // Se algum arquivo do app não baixou (ex.: o servidor falhou logo depois de uma publicação),
+  // recarrega sozinho uma vez antes de mostrar o erro.
+  function arquivosOk() {
+    const faltando = ['db', 'calc', 'exemplo', 'voz', 'telas', 'ui'].filter((k) => !A[k]);
+    let jaTentou = false;
+    try { jaTentou = sessionStorage.getItem('fabricaRecarregou') === '1'; } catch (e) { /* sem sessionStorage */ }
+    if (!faltando.length) {
+      try { sessionStorage.removeItem('fabricaRecarregou'); } catch (e) { /* ok */ }
+      return true;
+    }
+    if (!jaTentou) {
+      try { sessionStorage.setItem('fabricaRecarregou', '1'); } catch (e) { /* ok */ }
+      location.reload();
+      return false;
+    }
+    throw new Error('Parte do app não baixou (' + faltando.join(', ') + '). Confira a internet e abra o app de novo.');
+  }
+
   async function iniciar() {
     try {
+      if (!arquivosOk()) return;
       await A.db.abrir();
       await A.exemplo.semearSePreciso();
       const atual = await A.db.config('pessoaAtual');
@@ -64,8 +83,8 @@ window.App = window.App || {};
     } catch (e) {
       console.error(e);
       document.getElementById('app').innerHTML =
-        '<main class="tela carregando"><p>Não foi possível abrir o app neste navegador.</p><p style="font-size:16px">' +
-        A.ui.esc(e && e.message) + '</p></main>';
+        '<main class="tela carregando"><p>Não foi possível abrir o app.</p><p style="font-size:16px"></p></main>';
+      document.querySelector('#app p + p').textContent = (e && e.message) || '';
     }
   }
 

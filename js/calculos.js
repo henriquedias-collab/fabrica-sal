@@ -144,6 +144,32 @@ window.App = window.App || {};
     return mistura;
   }
 
+  // Chegou insumo: soma ao estoque e registra a entrada (tudo junto)
+  async function salvarEntrada({ insumo, quantidade, pessoa }) {
+    const ins = await App.db.pegar('insumos', insumo.id);
+    const { kgPor, granel } = unidade(ins);
+    const kg = granel ? quantidade : Math.round(quantidade * kgPor * 10) / 10;
+    ins.estoqueKg = Math.round((ins.estoqueKg + kg) * 10) / 10;
+    const entrada = {
+      id: App.db.novoId('entrada'),
+      insumoId: ins.id,
+      insumoNome: ins.nome,
+      quantidade,
+      unidade: ins.unidade || 'saco',
+      kg,
+      texto: granel ? numero(kg) + ' kg' : `${quantidade} ${nomeUnidade(quantidade, ins)} (${numero(kg)} kg)`,
+      pessoaId: pessoa ? pessoa.id : null,
+      pessoaNome: pessoa ? pessoa.nome : '',
+      quando: new Date().toISOString(),
+      exemplo: false,
+    };
+    await App.db.transacao(['entradas', 'insumos'], (l) => {
+      l('entradas').put(entrada);
+      l('insumos').put(ins);
+    });
+    return { entrada, insumo: ins };
+  }
+
   function iniciais(nome) {
     const p = String(nome || '').trim().split(/\s+/).filter(Boolean);
     if (!p.length) return '?';
@@ -167,6 +193,6 @@ window.App = window.App || {};
 
   App.calc = {
     DIA, UNIDADES, numero, unidade, nomeUnidade, qtd, qtdTexto, qtdFala, consumoDiario, alertasEstoque, faltas,
-    montarMistura, salvarMistura, iniciais, quando,
+    montarMistura, salvarMistura, salvarEntrada, iniciais, quando,
   };
 })();

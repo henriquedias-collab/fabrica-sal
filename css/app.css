@@ -373,3 +373,26 @@ select.campo { font-size: 22px; padding: 0 12px; }
 .linha-fora { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .foto-registro { width: 120px; height: 120px; object-fit: cover; border-radius: 12px; margin-top: 6px; }
 .lista audio { width: 100%; margin-top: 6px; }
+
+/* ---------- Chegou insumo e Problema ---------- */
+.grade-insumos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cartao-insumo {
+  min-height: 160px; padding: 12px 8px; overflow: hidden;
+  border-radius: 24px; border: 3px solid rgba(0, 0, 0, 0.18);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+}
+.cartao-insumo img { width: 100%; height: 100px; object-fit: cover; border-radius: 16px; }
+.cartao-insumo .nome { font-size: 22px; font-weight: 700; text-align: center; line-height: 1.1; overflow-wrap: anywhere; }
+.contador { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.btn-contar {
+  width: 104px; height: 104px; flex: none; border-radius: 50%; padding: 0;
+  border: 4px solid var(--tinta); background: #fff; color: var(--tinta);
+  display: flex; align-items: center; justify-content: center; touch-action: manipulation; user-select: none;
+}
+.btn-contar.mais { background: var(--tinta); color: #fff; }
+.btn-contar[disabled] { opacity: 0.3; }
+.contador-valor { flex: 1; display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.contador-valor .qtd-num { font-size: 96px; }
+.contador-valor .qtd-un { font-size: 30px; }
+.qtd-kg.centro { text-align: center; margin: 0; min-height: 30px; }
+.total .un-kg { font-size: 22px; opacity: 0.9; }
