@@ -11,7 +11,7 @@ window.App = window.App || {};
   };
 
   // Telas da Área do dono: só abrem depois da senha. Ao voltar para as telas do operador, trava de novo.
-  const TELAS_DONO = ['dono', 'registros', 'insumos', 'insumo', 'formulas', 'formula', 'pastos', 'pasto', 'pessoas', 'exemplos', 'trocarSenha', 'exportarCopia', 'importarCopia'];
+  const TELAS_DONO = ['dono', 'registros', 'insumos', 'insumo', 'formulas', 'formula', 'pastos', 'pasto', 'pessoas', 'exemplos', 'trocarSenha', 'exportarCopia', 'importarCopia', 'painel', 'contarEstoque'];
 
   // Mostra uma tela
   A.ir = async function (nome, params) {

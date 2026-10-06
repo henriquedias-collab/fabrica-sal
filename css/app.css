@@ -460,3 +460,52 @@ select.campo { font-size: 22px; padding: 0 12px; }
 .etiqueta.laranja { background: var(--laranja-claro); color: var(--laranja-texto); display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; }
 .total .un-kg b { font-size: 26px; }
 .aviso-dono svg { flex: none; margin-top: 2px; }
+
+/* Painel dos donos */
+.periodo { margin: -8px 0 0; text-align: center; font-size: 17px; color: var(--tinta-2); }
+.alerta-botao { width: 100%; text-align: left; font: inherit; cursor: pointer; }
+.numero-grande { background: var(--fundo); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
+.numero-grande .valor { font-size: 44px; font-weight: 700; line-height: 1; overflow-wrap: anywhere; }
+.numero-grande .legenda { font-size: 16px; color: var(--tinta-2); }
+.secao .grade-2 { margin-bottom: 10px; }
+.secao .btn { margin-top: 10px; }
+.linha-dupla { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.item-painel { display: flex; flex-direction: column; gap: 4px; }
+.item-painel b { font-size: 19px; }
+.detalhe { font-size: 16px; color: var(--tinta-2); }
+.selo {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 12px;
+  font-size: 14px; font-weight: 700; letter-spacing: 0.3px;
+}
+.selo svg { flex: none; }
+.selo.verde { background: var(--verde-claro); color: var(--verde-escuro); }
+.selo.laranja { background: var(--laranja-claro); color: var(--laranja-texto); }
+.selo.vermelho { background: var(--vermelho-claro); color: var(--vermelho-texto); }
+.selo.sem { background: var(--neutro); color: var(--tinta-2); }
+.barra { height: 10px; border-radius: 5px; background: var(--neutro); overflow: hidden; }
+.barra span { display: block; height: 100%; border-radius: 5px; }
+.barra .verde { background: var(--verde); }
+.barra .laranja { background: var(--laranja); }
+.barra .vermelho { background: var(--vermelho); }
+.item-pasto { display: flex; align-items: center; gap: 12px; }
+.num-pasto {
+  flex: none; width: 48px; height: 48px; border-radius: 14px; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700;
+}
+.item-pasto .item-texto { font-size: 19px; }
+.g-cabeca { flex: none; text-align: right; display: flex; flex-direction: column; }
+.g-cabeca b { font-size: 28px; line-height: 1; }
+.g-cabeca small { font-size: 14px; color: var(--tinta-2); }
+.qtd-compra { font-size: 19px; }
+.total-compra { border-top: 2px solid var(--tinta); margin-top: 10px; padding-top: 10px; font-size: 19px; }
+.problema-aberto {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px; margin-top: 10px;
+  border: 3px solid var(--vermelho); border-radius: 16px;
+}
+.problema-aberto b { font-size: 19px; }
+.problema-aberto audio { width: 100%; }
+.problema-aberto .btn { margin-top: 0; min-height: 64px; }
+.contagem { display: flex; flex-direction: column; gap: 8px; }
+.contagem .rotulo { margin-bottom: 0; }
+.btn-menu.painel-menu { background: var(--verde); border-color: var(--verde); color: #fff; }
+.btn-menu.painel-menu small { color: #fff; opacity: 0.9; }

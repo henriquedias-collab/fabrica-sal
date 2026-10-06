@@ -1,6 +1,6 @@
 // Service worker: guarda os arquivos do app no celular para funcionar sem internet.
 // Ao mudar qualquer arquivo do app, aumente a VERSAO para os celulares baixarem a nova.
-const VERSAO = 'fabrica-sal-cb32cdf923';
+const VERSAO = 'fabrica-sal-df679c6cab';
 const ARQUIVOS = [
   './',
   'index.html',
@@ -14,6 +14,7 @@ const ARQUIVOS = [
   'js/cadastros.js',
   'js/registros-operador.js',
   'js/copia.js',
+  'js/painel.js',
   'js/app.js',
   'fontes/atkinson-400.woff2',
   'fontes/atkinson-700.woff2',

@@ -122,6 +122,9 @@ window.App = window.App || {};
     return h.toString(16);
   }
 
+  // Usados também no painel (contar estoque)
+  Object.assign(A.ui, { lerNumero, paraCampo });
+
   // ---------- telas ----------
 
   Object.assign(A.telas, {
@@ -222,6 +225,7 @@ window.App = window.App || {};
 <main class="tela">
   ${topo('ÁREA DO DONO')}
   ${avisoCopia}
+  <button class="btn-menu painel-menu" data-ir="painel">${ic('grafico', 40, 2.2)}<span>Painel<small>Produção, estoque, consumo, compras e problemas</small></span>${ic('seguir', 28, 2.4)}</button>
   <button class="btn" data-ir="exportarCopia">${ic('baixar', 32, 2.4)} EXPORTAR CÓPIA</button>
   <button class="btn" data-acao="importar">${ic('abrir', 32, 2.4)} IMPORTAR CÓPIA</button>
   ${item('insumos', 'saco', 'Insumos', n(insumos, 'cadastrado', 'cadastrados'))}

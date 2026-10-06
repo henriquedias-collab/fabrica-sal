@@ -46,6 +46,7 @@ window.App = window.App || {};
     desfazer: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
     nuvem: '<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5H7z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/>',
     baixar: '<path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M4 20h16"/>',
+    grafico: '<path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V6"/><path d="M17 16v-8"/>',
     abrir: '<path d="M12 16V5"/><path d="M7 9.5l5-5 5 5"/><path d="M4 20h16"/>',
   };
 
@@ -592,7 +593,7 @@ window.App = window.App || {};
   <section class="secao">
     <h2>Problemas e avisos: ${problemas.length}</h2>
     <ul class="lista">
-      ${problemas.slice(0, 10).map((p) => `<li><b>${esc(C().quando(p.quando))}</b> · ${esc(p.pessoaNome || '—')}<br>${esc(descreverProblema(p))}
+      ${problemas.slice(0, 10).map((p) => `<li><b>${esc(C().quando(p.quando))}</b> · ${esc(p.pessoaNome || '—')}<br>${esc(descreverProblema(p))} <span class="etiqueta${p.resolvidoEm ? '' : ' ruim'}">${p.resolvidoEm ? 'resolvido ' + esc(C().quando(p.resolvidoEm)) : 'aberto'}</span>${etq(p)}
         ${p.foto ? `<br><img class="foto-registro" src="${p.foto}" alt="Foto do problema">` : ''}
         ${p.audio ? `<br><audio controls preload="none" data-audio="${esc(p.id)}"></audio>` : ''}</li>`).join('') || '<li>Nenhum.</li>'}
     </ul>

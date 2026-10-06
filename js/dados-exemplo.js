@@ -9,12 +9,12 @@ window.App = window.App || {};
     { id: 'ex-antonio', nome: 'Antônio', funcao: 'operador', cor: '#1f4fa0' },
   ];
 
-  // estoqueKg = estoque estimado agora; cai a cada mistura salva
+  // estoqueKg = estoque estimado agora; cai a cada mistura salva. Preços: só para a demonstração.
   const insumos = [
-    { id: 'ex-sal', nome: 'Sal comum', cor: '#e9e7e1', corTexto: '#3d3a33', unidade: 'saco', kgPorSaco: 25, estoqueKg: 3000, estoqueMinimoKg: 1000 },
-    { id: 'ex-nucleo', nome: 'Núcleo mineral', cor: '#e2d6ee', corTexto: '#4b2f73', unidade: 'saco', kgPorSaco: 30, estoqueKg: 1500, estoqueMinimoKg: 300 },
-    { id: 'ex-farelo', nome: 'Farelo de soja', cor: '#ecd3a2', corTexto: '#6b4a12', unidade: 'saco', kgPorSaco: 50, estoqueKg: 100, estoqueMinimoKg: 200 },
-    { id: 'ex-ureia', nome: 'Ureia', cor: '#dfe7f2', corTexto: '#1f3f6e', unidade: 'saco', kgPorSaco: 50, estoqueKg: 100, estoqueMinimoKg: 150 },
+    { id: 'ex-sal', nome: 'Sal comum', cor: '#e9e7e1', corTexto: '#3d3a33', unidade: 'saco', kgPorSaco: 25, estoqueKg: 3000, estoqueMinimoKg: 1000, precoPorUnidade: 35 },
+    { id: 'ex-nucleo', nome: 'Núcleo mineral', cor: '#e2d6ee', corTexto: '#4b2f73', unidade: 'saco', kgPorSaco: 30, estoqueKg: 1500, estoqueMinimoKg: 300, precoPorUnidade: 180 },
+    { id: 'ex-farelo', nome: 'Farelo de soja', cor: '#ecd3a2', corTexto: '#6b4a12', unidade: 'saco', kgPorSaco: 50, estoqueKg: 100, estoqueMinimoKg: 200, precoPorUnidade: 130 },
+    { id: 'ex-ureia', nome: 'Ureia', cor: '#dfe7f2', corTexto: '#1f3f6e', unidade: 'saco', kgPorSaco: 50, estoqueKg: 100, estoqueMinimoKg: 150, precoPorUnidade: 190 },
   ];
 
   // itens: kg de cada insumo por batida, na ordem em que entram no misturador
@@ -35,10 +35,10 @@ window.App = window.App || {};
   ];
 
   const pastos = [
-    { id: 'ex-pasto-1', numero: 1, nome: 'Vacas', cor: '#1d6b3a', corClara: '#d6e8dc', cabecas: 120 },
-    { id: 'ex-pasto-2', numero: 2, nome: 'Novilhas', cor: '#1f4fa0', corClara: '#dbe5f5', cabecas: 80 },
-    { id: 'ex-pasto-3', numero: 3, nome: 'Garrotes', cor: '#a65300', corClara: '#f8e2c9', cabecas: 60 },
-    { id: 'ex-pasto-4', numero: 4, nome: 'Bezerros', cor: '#5b3a8a', corClara: '#e6dcf2', cabecas: 50 },
+    { id: 'ex-pasto-1', numero: 1, nome: 'Vacas', cor: '#1d6b3a', corClara: '#d6e8dc', cabecas: 1500 },
+    { id: 'ex-pasto-2', numero: 2, nome: 'Novilhas', cor: '#1f4fa0', corClara: '#dbe5f5', cabecas: 1000 },
+    { id: 'ex-pasto-3', numero: 3, nome: 'Garrotes', cor: '#a65300', corClara: '#f8e2c9', cabecas: 800 },
+    { id: 'ex-pasto-4', numero: 4, nome: 'Bezerros', cor: '#5b3a8a', corClara: '#e6dcf2', cabecas: 600 },
   ];
 
   // Histórico de 14 dias: 1 sal mineral por dia e 1 proteinado a cada 2 dias.
@@ -72,6 +72,34 @@ window.App = window.App || {};
     return lista;
   }
 
+  // Contagem de estoque de 2 dias atrás, para o painel mostrar o previsto x real:
+  // na ureia sumiu 1 saco; no núcleo bateu. O sal comum fica sem contagem.
+  function contagensExemplo() {
+    const quando = new Date(Date.now() - 2 * App.calc.DIA).toISOString();
+    return [
+      { id: 'ex-contagem-ureia', insumoId: 'ex-ureia', insumoNome: 'Ureia', antesKg: 150, depoisKg: 100, quando, tipo: 'contagem', exemplo: true },
+      { id: 'ex-contagem-nucleo', insumoId: 'ex-nucleo', insumoNome: 'Núcleo mineral', antesKg: 1500, depoisKg: 1500, quando, tipo: 'contagem', exemplo: true },
+    ];
+  }
+
+  // Um problema aberto (ontem) e um já resolvido (há 5 dias)
+  function problemasExemplo() {
+    const agora = Date.now();
+    return [
+      {
+        id: 'ex-problema-1', tipo: 'saco-rasgado', quando: new Date(agora - App.calc.DIA).toISOString(),
+        insumoId: 'ex-ureia', insumoNome: 'Ureia', audio: null, audioSegundos: 0, foto: null,
+        pessoaId: 'ex-ze', pessoaNome: 'Zé', exemplo: true,
+      },
+      {
+        id: 'ex-problema-2', tipo: 'maquina-parada', quando: new Date(agora - 5 * App.calc.DIA).toISOString(),
+        insumoId: null, insumoNome: null, audio: null, audioSegundos: 0, foto: null,
+        pessoaId: 'ex-antonio', pessoaNome: 'Antônio', exemplo: true,
+        resolvidoEm: new Date(agora - 4 * App.calc.DIA).toISOString(),
+      },
+    ];
+  }
+
   function marcar(lista) {
     return lista.map((x) => Object.assign({}, x, { exemplo: true }));
   }
@@ -83,6 +111,8 @@ window.App = window.App || {};
       formulas: marcar(formulas),
       pastos: marcar(pastos),
       misturas: historico(),
+      contagens: contagensExemplo(),
+      problemas: problemasExemplo(),
     };
     const nomes = Object.keys(dados).concat('config');
     await App.db.transacao(nomes, (l) => {
