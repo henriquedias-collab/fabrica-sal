@@ -434,3 +434,28 @@ select.campo { font-size: 22px; padding: 0 12px; }
 .btn.laranja { background: var(--laranja); border-color: var(--laranja); color: #fff; }
 .circulo-alerta.laranja { background: var(--laranja); }
 .titulo-falta.laranja { color: var(--laranja-texto); }
+
+/* ---------- Chegou insumo: peso de cada saco ---------- */
+.parte-tela { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+.rotulo-peso { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: -6px; }
+.pesos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.opcao.peso { min-height: 68px; font-size: 24px; gap: 4px; white-space: nowrap; padding: 0 6px; }
+.opcao.peso.outro { border-style: dashed; border-color: var(--tinta-2); }
+.conta {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px;
+  border-radius: 20px; background: #fff; border: 3px solid var(--tinta); text-align: center; line-height: 1.1;
+}
+.conta-linha { font-size: 30px; font-weight: 700; }
+.conta-total { font-size: 52px; font-weight: 700; }
+.visor {
+  text-align: center; font-size: 72px; font-weight: 700; line-height: 1; padding: 12px;
+  border-radius: 20px; background: #fff; border: 3px solid var(--tinta);
+}
+.visor small { font-size: 32px; }
+.aviso-dono {
+  display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 14px;
+  background: var(--laranja-claro); color: var(--laranja-texto); border: 2px solid var(--laranja); font-size: 16px !important;
+}
+.etiqueta.laranja { background: var(--laranja-claro); color: var(--laranja-texto); display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; }
+.total .un-kg b { font-size: 26px; }
+.aviso-dono svg { flex: none; margin-top: 2px; }

@@ -9,6 +9,8 @@ window.App = window.App || {};
   const ic = (n, t, w) => U().ic(n, t, w);
 
   const MAX = 9999;
+  // Pesos mais comuns de cada unidade (o peso do cadastro entra junto, se for diferente)
+  const PESOS_COMUNS = { saco: [25, 30, 40, 50], balde: [10, 15, 20, 25], bag: [500, 750, 1000, 1200] };
 
   // Cartões grandes de insumo (foto ou cor + nome), usados para escolher
   function cartoesInsumo(insumos) {
@@ -67,45 +69,104 @@ window.App = window.App || {};
       };
     },
 
-    // CHEGOU INSUMO: quantos?
+    // CHEGOU INSUMO: quantos? e de quantos kg cada um?
     async chegadaContar({ insumoId }) {
       const ins = await A.db.pegar('insumos', insumoId);
       if (!ins) return A.telas.chegada();
       const u = C().unidade(ins);
+      const num = (x) => C().numero(x);
       const passo = u.granel ? 10 : 1; // a granel conta de 10 em 10 kg
       let n = 0;
-      const rotulo = () => (u.granel ? 'KG' : C().nomeUnidade(n, ins).toUpperCase());
-      const kgTexto = () => (u.granel ? '' : `= ${C().numero(n * u.kgPor)} kg`);
+      let peso = u.kgPor; // peso de cada saco nesta chegada (começa com o do cadastro)
+      let opcoes = [...new Set([...(PESOS_COMUNS[ins.unidade || 'saco'] || []), u.kgPor].filter((x) => x > 0))].sort((a, b) => a - b);
+      let digitado = '';
+      const nome = (q) => C().nomeUnidade(q, ins);
+      const UM = u.um.toUpperCase();
+
+      const falaConta = () => (u.granel
+        ? `${num(n)} quilos.`
+        : `${n} ${nome(n)} de ${num(peso)} quilos. ${n} vezes ${num(peso)} dá ${num(n * peso)} quilos.`);
+      const falaTela = () => (u.granel
+        ? `Quantos quilos de ${ins.nome} chegaram? Cada toque no mais soma 10 quilos. Agora: ${falaConta()} Depois toque em guardar.`
+        : `Quantos ${u.varios} de ${ins.nome} chegaram? Toque no mais para cada ${u.um}. Embaixo, toque no peso de cada ${u.um}. ` +
+          `Agora: ${falaConta()} Depois toque em guardar.`);
+      const falaTeclado = `Digite quantos quilos tem cada ${u.um} e toque em usar este peso.`;
+
       return {
-        fala: u.granel
-          ? `Quantos quilos de ${ins.nome} chegaram? Cada toque no mais soma 10 quilos. Depois toque em guardar.`
-          : `Quantos ${u.varios} de ${ins.nome} chegaram? Toque no mais para cada ${u.um}. Segure apertado para ir mais rápido. Depois toque em guardar.`,
+        fala: falaTela(),
         html: `
 <main class="tela">
   <div class="topo">${U().btnVoltar()}<h1 class="titulo">QUANTOS?</h1>${U().btnFalar()}</div>
-  ${U().fotoInsumo(ins, 130)}
-  <div class="nome-insumo">${esc(ins.nome.toUpperCase())}</div>
-  <div class="contador">
-    <button class="btn-contar" data-acao="menos" aria-label="Menos ${u.granel ? '10 quilos' : 'um ' + u.um}">${ic('menos', 56, 3)}</button>
-    <div class="contador-valor" aria-live="polite">
-      <span class="qtd-num" id="n">0</span>
-      <span class="qtd-un" id="rotulo">${esc(rotulo())}</span>
+  <div class="parte-tela" id="parte-contar">
+    ${U().fotoInsumo(ins, 110)}
+    <div class="nome-insumo">${esc(ins.nome.toUpperCase())}</div>
+    <div class="contador">
+      <button class="btn-contar" data-acao="menos" aria-label="Menos ${u.granel ? '10 quilos' : 'um ' + u.um}">${ic('menos', 56, 3)}</button>
+      <div class="contador-valor">
+        <span class="qtd-num" id="n">0</span>
+        <span class="qtd-un" id="rotulo"></span>
+      </div>
+      <button class="btn-contar mais" data-acao="mais" aria-label="Mais ${u.granel ? '10 quilos' : 'um ' + u.um}">${ic('mais', 56, 3)}</button>
     </div>
-    <button class="btn-contar mais" data-acao="mais" aria-label="Mais ${u.granel ? '10 quilos' : 'um ' + u.um}">${ic('mais', 56, 3)}</button>
+    ${u.granel ? '' : `
+    <div class="rotulo-peso">PESO DE CADA ${esc(UM)}</div>
+    <div class="pesos" id="pesos" role="group" aria-label="Peso de cada ${esc(u.um)}"></div>`}
+    <div class="conta" id="conta" aria-live="polite"></div>
+    <div class="espaco"></div>
+    <button class="btn verde grande" data-acao="guardar" disabled>${ic('certo', 48, 3)} GUARDAR</button>
   </div>
-  <div class="qtd-kg centro" id="kg">${esc(kgTexto())}</div>
-  <div class="espaco"></div>
-  <button class="btn verde grande" data-acao="guardar" disabled>${ic('certo', 48, 3)} GUARDAR</button>
+  <div class="parte-tela" id="parte-teclado" hidden>
+    <p class="instrucao">Quantos kg tem cada ${esc(u.um)}?</p>
+    <div class="visor"><span id="visor">0</span> <small>kg</small></div>
+    <p class="erro" role="alert" hidden>${ic('atencao', 28)} <span>Digite um peso entre 1 e 2.000 kg.</span></p>
+    <div class="teclado">
+      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button class="tecla" data-d="${d}">${d}</button>`).join('')}
+      <button class="tecla" data-d="," aria-label="Vírgula">,</button>
+      <button class="tecla" data-d="0">0</button>
+      <button class="tecla" data-acao="apagar-digito" aria-label="Apagar último número">${ic('voltar', 34, 2.6)}</button>
+    </div>
+    <div class="grade-2">
+      <button class="btn" data-acao="cancelar-peso">CANCELAR</button>
+      <button class="btn verde" data-acao="usar-peso">${ic('certo', 32, 3)} USAR</button>
+    </div>
+  </div>
 </main>`,
         ligar(r) {
           const btnGuardar = r.querySelector('[data-acao=guardar]');
+          const parteContar = r.querySelector('#parte-contar');
+          const parteTeclado = r.querySelector('#parte-teclado');
+          const erro = parteTeclado.querySelector('.erro');
+
+          const desenharPesos = () => {
+            const caixa = r.querySelector('#pesos');
+            if (!caixa) return;
+            caixa.innerHTML = opcoes.map((p) => {
+              const sel = Math.abs(p - peso) < 0.05;
+              return `<button class="opcao peso" data-peso="${p}" aria-pressed="${sel}">${sel ? ic('certo', 18, 3.4) : ''}${num(p)} kg</button>`;
+            }).join('') + '<button class="opcao peso outro" data-acao="outro">OUTRO</button>';
+          };
+
           const mostrar = () => {
-            r.querySelector('#n').textContent = C().numero(n);
-            r.querySelector('#rotulo').textContent = rotulo();
-            r.querySelector('#kg').textContent = kgTexto();
+            r.querySelector('#n').textContent = num(n);
+            r.querySelector('#rotulo').textContent = u.granel ? 'KG' : nome(n).toUpperCase();
+            r.querySelector('#conta').innerHTML = u.granel
+              ? `<span class="conta-total">${num(n)} kg</span>`
+              : `<span class="conta-linha">${n} ${esc(nome(n))} × ${num(peso)} kg</span><span class="conta-total">= ${num(n * peso)} kg</span>`;
             btnGuardar.disabled = n <= 0;
             r.querySelector('[data-acao=menos]').disabled = n <= 0;
+            A.estado.fala = falaTela(); // o alto-falante lê a conta como está agora
           };
+
+          const abrirTeclado = (abrir) => {
+            parteContar.hidden = abrir;
+            parteTeclado.hidden = !abrir;
+            erro.hidden = true;
+            digitado = '';
+            r.querySelector('#visor').textContent = '0';
+            A.estado.fala = abrir ? falaTeclado : falaTela();
+            A.voz.parar();
+          };
+
           segurarParaRepetir(r.querySelector('[data-acao=mais]'), (vezes) => {
             n = Math.min(MAX, n + passo * (vezes || 1));
             mostrar();
@@ -114,13 +175,53 @@ window.App = window.App || {};
             n = Math.max(0, n - passo * (vezes || 1));
             mostrar();
           });
+
+          r.addEventListener('click', (ev) => {
+            const b = ev.target.closest('button');
+            if (!b) return;
+            if (b.dataset.peso) { peso = Number(b.dataset.peso); desenharPesos(); mostrar(); }
+            if (b.dataset.acao === 'outro') abrirTeclado(true);
+            if (b.dataset.acao === 'cancelar-peso') abrirTeclado(false);
+            if (b.dataset.d !== undefined) {
+              const d = b.dataset.d;
+              if (d === ',' && (digitado.includes(',') || !digitado)) return;
+              if (digitado.includes(',') && digitado.split(',')[1].length >= 1) return; // 1 casa decimal
+              if (digitado.replace(',', '').length >= 5) return;
+              digitado = (digitado === '0' && d !== ',') ? d : digitado + d;
+              r.querySelector('#visor').textContent = digitado;
+              erro.hidden = true;
+            }
+            if (b.dataset.acao === 'apagar-digito') {
+              digitado = digitado.slice(0, -1);
+              r.querySelector('#visor').textContent = digitado || '0';
+            }
+            if (b.dataset.acao === 'usar-peso') {
+              const v = Number(digitado.replace(',', '.'));
+              if (!(v >= 1 && v <= 2000)) {
+                erro.hidden = false;
+                A.voz.falar('Digite um peso entre 1 e 2 mil quilos.');
+                return;
+              }
+              peso = Math.round(v * 10) / 10;
+              if (!opcoes.some((p) => Math.abs(p - peso) < 0.05)) opcoes = [...opcoes, peso].sort((a, b2) => a - b2);
+              abrirTeclado(false);
+              desenharPesos();
+              mostrar();
+            }
+          });
+
+          desenharPesos();
           mostrar();
-          U().ao(r, '[data-acao=voltar]', () => A.ir('chegada'));
+
+          U().ao(r, '[data-acao=voltar]', () => {
+            if (!parteTeclado.hidden) return abrirTeclado(false);
+            A.ir('chegada');
+          });
           U().ao(r, '[data-acao=guardar]', async () => {
             if (n <= 0) return;
             btnGuardar.disabled = true;
             try {
-              const res = await C().salvarEntrada({ insumo: ins, quantidade: n, pessoa: A.estado.pessoa });
+              const res = await C().salvarEntrada({ insumo: ins, quantidade: n, kgPorUnidade: peso, pessoa: A.estado.pessoa });
               A.ir('chegadaPronta', res);
             } catch (e) {
               btnGuardar.disabled = false;
@@ -135,23 +236,28 @@ window.App = window.App || {};
     async chegadaPronta({ entrada, insumo }) {
       const p = A.estado.pessoa;
       const u = C().unidade(insumo);
-      const grande = u.granel ? C().numero(entrada.kg) : String(entrada.quantidade);
-      const un = u.granel ? 'KG' : C().nomeUnidade(entrada.quantidade, insumo).toUpperCase();
+      const num = (x) => C().numero(x);
+      const q = entrada.quantidade;
+      const pesoCada = entrada.kgPorUnidade || u.kgPor;
+      const un = u.granel ? 'KG' : C().nomeUnidade(q, insumo).toUpperCase();
+      const falaChegou = u.granel
+        ? `Chegaram ${num(entrada.kg)} quilos de ${insumo.nome}.`
+        : `${q === 1 ? 'Chegou' : 'Chegaram'} ${q} ${C().nomeUnidade(q, insumo)} de ${num(pesoCada)} quilos de ${insumo.nome}. ` +
+          `${q} vezes ${num(pesoCada)} dá ${num(entrada.kg)} quilos.`;
       return {
         tom: 'verde',
-        fala: `Guardado. ${!u.granel && entrada.quantidade === 1 ? 'Chegou' : 'Chegaram'} ${u.granel ? C().numero(entrada.kg) + ' quilos' : entrada.quantidade + ' ' + C().nomeUnidade(entrada.quantidade, insumo)} de ${insumo.nome}. ` +
-          `Agora tem ${C().qtdFala(insumo.estoqueKg, insumo)}. Obrigado, ${p.nome}.`,
+        fala: `Guardado. ${falaChegou} Agora o estoque tem ${num(insumo.estoqueKg)} quilos. Obrigado, ${p.nome}.`,
         html: `
 <main class="tela verde">
   <div class="topo"><span class="vago"></span><span class="espaco"></span>${U().btnFalar()}</div>
   <div class="circulo-ok">${ic('certo', 100, 3)}</div>
   <h1 class="titulo-pronta">GUARDADO</h1>
   <div class="bloco-verde total">
-    <span class="num">${esc(grande)}</span>
+    <span class="num">${esc(u.granel ? num(entrada.kg) : String(q))}</span>
     <span class="un">${esc(un)} DE ${esc(insumo.nome.toUpperCase())}</span>
-    ${u.granel ? '' : `<span class="un-kg">= ${C().numero(entrada.kg)} kg</span>`}
+    ${u.granel ? '' : `<span class="un-kg">× ${num(pesoCada)} kg = <b>${num(entrada.kg)} kg</b></span>`}
   </div>
-  <div class="bloco-verde linha-info">${ic('saco', 40, 1.8)}<div><small>Estoque agora</small><b>${esc(C().qtdTexto(insumo.estoqueKg, insumo))}</b></div></div>
+  <div class="bloco-verde linha-info">${ic('saco', 40, 1.8)}<div><small>Estoque agora</small><b>${esc(num(insumo.estoqueKg))} kg</b></div></div>
   <div class="bloco-verde linha-info">${U().avatar(p, 48)}<div><small>Quem recebeu · quando</small><b>${esc(p.nome)} · ${esc(C().quando(entrada.quando))}</b></div></div>
   <div class="espaco"></div>
   <button class="btn branco-no-verde" data-acao="inicio">${ic('casa', 44, 2.4)} INÍCIO</button>

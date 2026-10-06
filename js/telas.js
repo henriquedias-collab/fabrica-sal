@@ -570,6 +570,7 @@ window.App = window.App || {};
         html: `
 <main class="tela">
   <div class="topo">${btnVoltar()}<h1 class="titulo">REGISTROS</h1>${btnFalar()}</div>
+  ${entradas.some((e) => e.pesoDiferente) ? `<p class="aviso-dono">${ic('atencao', 24)} <span><b>${entradas.filter((e) => e.pesoDiferente).length} ${entradas.filter((e) => e.pesoDiferente).length === 1 ? 'chegada' : 'chegadas'} com saco de peso diferente do cadastro</b> (veja em Chegadas). O cadastro não foi mudado: se o peso mudou de vez, corrija em Insumos.</span></p>` : ''}
   <section class="secao">
     <h2>Misturas: ${misturas.length}</h2>
     <p>${feitas} ${feitas === 1 ? 'feita' : 'feitas'} no app · ${exemplos} de exemplo</p>
@@ -582,7 +583,7 @@ window.App = window.App || {};
     <h2>Chegadas de insumo: ${entradas.length}</h2>
     <ul class="lista">
       ${entradas.slice(0, 10).map((e) => `<li><b>${esc(C().quando(e.quando))}</b> · ${esc(e.insumoNome)} · ${esc(e.texto)}<br>
-        Recebido por ${esc(e.pessoaNome || '—')}</li>`).join('') || '<li>Nenhuma.</li>'}
+        Recebido por ${esc(e.pessoaNome || '—')}${e.pesoDiferente ? `<br><span class="etiqueta laranja">${ic('atencao', 16)} peso diferente: saco de ${C().numero(e.kgPorUnidade)} kg (cadastro: ${C().numero(e.kgPorUnidadeCadastro)} kg)</span>` : ''}</li>`).join('') || '<li>Nenhuma.</li>'}
     </ul>
   </section>
   <section class="secao">

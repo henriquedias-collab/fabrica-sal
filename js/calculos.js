@@ -144,20 +144,26 @@ window.App = window.App || {};
     return mistura;
   }
 
-  // Chegou insumo: soma ao estoque e registra a entrada (tudo junto)
-  async function salvarEntrada({ insumo, quantidade, pessoa }) {
+  // Chegou insumo: soma ao estoque e registra a entrada (tudo junto).
+  // kgPorUnidade = peso de cada saco que chegou (o operador pode mudar); o cadastro do insumo não muda.
+  async function salvarEntrada({ insumo, quantidade, kgPorUnidade, pessoa }) {
     const ins = await App.db.pegar('insumos', insumo.id);
     const { kgPor, granel } = unidade(ins);
-    const kg = granel ? quantidade : Math.round(quantidade * kgPor * 10) / 10;
+    const pesoCada = granel ? null : (kgPorUnidade > 0 ? kgPorUnidade : kgPor);
+    const kg = granel ? quantidade : Math.round(quantidade * pesoCada * 10) / 10;
     ins.estoqueKg = Math.round((ins.estoqueKg + kg) * 10) / 10;
+    const pesoDiferente = !granel && Math.abs(pesoCada - kgPor) > 0.05;
     const entrada = {
       id: App.db.novoId('entrada'),
       insumoId: ins.id,
       insumoNome: ins.nome,
       quantidade,
       unidade: ins.unidade || 'saco',
+      kgPorUnidade: pesoCada, // peso de cada saco nesta chegada
+      kgPorUnidadeCadastro: granel ? null : kgPor, // peso que estava no cadastro
+      pesoDiferente,
       kg,
-      texto: granel ? numero(kg) + ' kg' : `${quantidade} ${nomeUnidade(quantidade, ins)} (${numero(kg)} kg)`,
+      texto: granel ? numero(kg) + ' kg' : `${quantidade} ${nomeUnidade(quantidade, ins)} × ${numero(pesoCada)} kg = ${numero(kg)} kg`,
       pessoaId: pessoa ? pessoa.id : null,
       pessoaNome: pessoa ? pessoa.nome : '',
       quando: new Date().toISOString(),
