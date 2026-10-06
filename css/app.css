@@ -171,6 +171,7 @@ button:focus-visible, input:focus-visible { outline: 4px solid var(--azul); outl
   display: flex; align-items: center; gap: 14px;
 }
 .alerta.laranja { background: var(--laranja-claro); border-color: var(--laranja); color: var(--laranja-texto); }
+.alerta.verde { background: var(--verde-claro); border-color: var(--verde); color: var(--verde-escuro); }
 .alerta.vermelho { background: var(--vermelho-claro); border-color: var(--vermelho); color: var(--vermelho-texto); }
 .alerta b { display: block; font-size: 23px; }
 .alerta span { font-size: 18px; }

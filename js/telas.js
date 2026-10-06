@@ -44,6 +44,9 @@ window.App = window.App || {};
     maquina: '<rect x="3" y="8" width="14" height="9" rx="2"/><path d="M17 11h3v3h-3"/><circle cx="7" cy="19.5" r="1.5"/><circle cx="13" cy="19.5" r="1.5"/><path d="M8 3l4 4M12 3 8 7"/>',
     vazio: '<path d="M8.5 3h7l-1.5 3.2c3 1.4 5 4.4 5 8.3 0 4.2-3 6.5-7 6.5s-7-2.3-7-6.5c0-3.9 2-6.9 5-8.3L8.5 3z"/><path d="M9.5 14h5"/>',
     desfazer: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+    nuvem: '<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5H7z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/>',
+    baixar: '<path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M4 20h16"/>',
+    abrir: '<path d="M12 16V5"/><path d="M7 9.5l5-5 5 5"/><path d="M4 20h16"/>',
   };
 
   function ic(nome, tam, traco) {

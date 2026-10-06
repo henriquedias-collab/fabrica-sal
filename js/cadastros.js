@@ -215,11 +215,15 @@ window.App = window.App || {};
       const item = (acao, icone, titulo, detalhe) => `
   <button class="btn-menu" data-ir="${acao}">${ic(icone, 40, 1.8)}<span>${titulo}<small>${detalhe}</small></span>${ic('seguir', 28, 2.4)}</button>`;
       const n = (lista, um, varios) => `${lista.length} ${lista.length === 1 ? um : varios}`;
+      const avisoCopia = await A.copia.aviso();
       return {
         fala: 'Área do dono. Escolha o que quer cadastrar ou conferir.',
         html: `
 <main class="tela">
   ${topo('ÁREA DO DONO')}
+  ${avisoCopia}
+  <button class="btn" data-ir="exportarCopia">${ic('baixar', 32, 2.4)} EXPORTAR CÓPIA</button>
+  <button class="btn" data-acao="importar">${ic('abrir', 32, 2.4)} IMPORTAR CÓPIA</button>
   ${item('insumos', 'saco', 'Insumos', n(insumos, 'cadastrado', 'cadastrados'))}
   ${item('formulas', 'misturar', 'Fórmulas', n(formulas, 'cadastrada', 'cadastradas'))}
   ${item('pastos', 'pasto', 'Pastos e lotes', n(pastos, 'cadastrado', 'cadastrados'))}
@@ -231,6 +235,7 @@ window.App = window.App || {};
         ligar(r) {
           U().ao(r, '[data-acao=voltar]', () => A.ir(A.estado.pessoa ? 'inicio' : 'quem'));
           U().ao(r, '[data-ir]', (b) => A.ir(b.dataset.ir));
+          U().ao(r, '[data-acao=importar]', () => A.copia.escolherArquivo());
         },
       };
     },

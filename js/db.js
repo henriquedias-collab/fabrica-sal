@@ -54,7 +54,13 @@ window.App = window.App || {};
     transacao(nomes, trabalho) {
       return new Promise((ok, erro) => {
         const t = banco.transaction(nomes, 'readwrite');
-        trabalho((n) => t.objectStore(n));
+        try {
+          trabalho((n) => t.objectStore(n));
+        } catch (e) {
+          t.abort(); // um erro no meio desfaz o que já tinha sido pedido
+          erro(e);
+          return;
+        }
         t.oncomplete = () => ok();
         t.onerror = () => erro(t.error);
         t.onabort = () => erro(t.error);
