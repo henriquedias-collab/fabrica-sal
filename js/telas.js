@@ -43,6 +43,7 @@ window.App = window.App || {};
     gota: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"/>',
     maquina: '<rect x="3" y="8" width="14" height="9" rx="2"/><path d="M17 11h3v3h-3"/><circle cx="7" cy="19.5" r="1.5"/><circle cx="13" cy="19.5" r="1.5"/><path d="M8 3l4 4M12 3 8 7"/>',
     vazio: '<path d="M8.5 3h7l-1.5 3.2c3 1.4 5 4.4 5 8.3 0 4.2-3 6.5-7 6.5s-7-2.3-7-6.5c0-3.9 2-6.9 5-8.3L8.5 3z"/><path d="M9.5 14h5"/>',
+    desfazer: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   };
 
   function ic(nome, tam, traco) {
@@ -296,7 +297,7 @@ window.App = window.App || {};
             const f = formulas.find((x) => x.id === b.dataset.formula);
             const faltas = C().faltas(f, mapa);
             A.estado.mistura = {
-              formula: f, insumos: mapa, passo: 0, inicio: new Date().toISOString(),
+              formula: f, insumos: mapa, atual: 0, feitos: [], ordem: [], inicio: new Date().toISOString(),
               avisoFalta: faltas.length
                 ? faltas.map((x) => ({ insumoId: x.insumo.id, precisaKg: x.precisaKg, temKg: x.temKg }))
                 : null,
@@ -363,48 +364,104 @@ window.App = window.App || {};
       };
     },
 
-    // PASSO A PASSO DA MISTURA
+    // PASSO A PASSO DA MISTURA (ordem livre)
+    // m.feitos = posições já colocadas; m.atual = a que aparece na tela; m.ordem = ordem em que foram feitas
     async passo() {
       const m = A.estado.mistura;
       const itens = m.formula.itens;
-      const i = m.passo;
+      if (!m.feitos) m.feitos = [];
+      if (!m.ordem) m.ordem = [];
+      if (m.atual === undefined) m.atual = 0;
+      const i = m.atual;
       const it = itens[i];
       const ins = m.insumos[it.insumoId];
       const s = C().qtd(it.kg, ins);
+      const jaFeito = m.feitos.includes(i);
+      const nFeitos = m.feitos.length;
 
       const minis = itens.map((x, k) => {
         const insk = m.insumos[x.insumoId];
-        const estado = k < i ? 'feito' : k === i ? 'agora' : 'depois';
-        const leitura = estado === 'feito' ? 'feito' : estado === 'agora' ? 'agora' : 'depois';
-        return `<div class="mini ${estado}" role="listitem" aria-label="${esc(insk.nome)}: ${leitura}" style="background:${insk.cor};color:${insk.corTexto}">
-          ${estado === 'feito' ? ic('certo', 30, 3) : ic('saco', 26, 1.8)}<span>${esc(insk.nome.split(' ')[0])}</span></div>`;
+        const feito = m.feitos.includes(k);
+        const classes = ['mini', feito ? 'feito' : 'falta', k === i ? 'agora' : ''].join(' ');
+        return `<button class="${classes}" data-item="${k}" aria-pressed="${k === i}" aria-label="${esc(insk.nome)}: ${feito ? 'feito' : 'falta'}"
+          style="background:${insk.cor};color:${insk.corTexto}">
+          ${feito ? ic('certo', 30, 3) : ic('saco', 28, 1.8)}<span>${esc(insk.nome.split(' ')[0])}</span></button>`;
       }).join('');
 
       const grande = s.n
         ? `<span class="qtd-num">${s.n}</span><span class="qtd-un">${C().nomeUnidade(s.n, ins).toUpperCase()}</span>${s.resto ? `<span class="qtd-mais">+ ${C().numero(s.resto)} kg</span>` : ''}`
         : `<span class="qtd-num">${C().numero(it.kg)}</span><span class="qtd-un">KG</span>`;
 
+      const contagem = `${nFeitos} de ${itens.length} ${nFeitos === 1 ? 'feito' : 'feitos'}`;
+      const tudoFeito = nFeitos === itens.length;
+      const fala = tudoFeito
+        ? 'Todos os insumos foram colocados. Toque em seguir. Se algum não foi colocado, toque nele e depois em desfazer.'
+        : jaFeito
+        ? `${contagem}. ${ins.nome} já foi colocado. Se não colocou, toque em desfazer. Ou toque em outro insumo lá em cima.`
+        : `${contagem}. Coloque ${C().qtdFala(it.kg, ins)} de ${ins.nome}. ${s.n ? 'São ' + C().numero(it.kg) + ' quilos. ' : ''}` +
+          `Depois toque em feito. Pode fazer na ordem que quiser: toque no insumo lá em cima.`;
+
       return {
-        fala: `Passo ${i + 1} de ${itens.length}. Coloque ${C().qtdFala(it.kg, ins)} de ${ins.nome}. ` +
-          `${s.n ? 'São ' + C().numero(it.kg) + ' quilos. ' : ''}Depois toque em feito.`,
+        fala,
         html: `
 <main class="tela">
-  <div class="topo">${btnVoltar()}<div class="contador-passo">${i + 1} <small>de</small> ${itens.length}</div>${btnFalar()}</div>
-  <div class="minis" role="list" aria-label="Insumos da batida" style="grid-template-columns:repeat(${itens.length}, minmax(0, 1fr))">${minis}</div>
-  ${fotoInsumo(ins, 160)}
+  <div class="topo">${btnVoltar()}<div class="contador-passo"><b>${nFeitos}</b> <small>de</small> <b>${itens.length}</b><small class="bloco">${nFeitos === 1 ? 'feito' : 'feitos'}</small></div>${btnFalar()}</div>
+  <div class="minis" role="group" aria-label="Insumos da batida (toque para escolher)" style="grid-template-columns:repeat(${itens.length}, minmax(0, 1fr))">${minis}</div>
+  ${fotoInsumo(ins, 150)}
   <div class="nome-insumo">${esc(ins.nome.toUpperCase())}</div>
-  <div class="quantidade">${grande}${s.n ? `<span class="qtd-kg">= ${C().numero(it.kg)} kg</span>` : ''}</div>
+  <div class="quantidade${jaFeito ? ' apagada' : ''}">${grande}${s.n ? `<span class="qtd-kg">= ${C().numero(it.kg)} kg</span>` : ''}</div>
+  ${jaFeito ? `<div class="selo-feito">${ic('certo', 30, 3)} JÁ COLOCADO</div>` : ''}
   <div class="espaco"></div>
-  <button class="btn verde grande" data-acao="feito">${ic('certo', 56, 3)} FEITO</button>
+  ${tudoFeito ? `<button class="btn verde grande" data-acao="seguir">${ic('seguir', 48, 2.6)} SEGUIR</button>` : ''}
+  ${jaFeito
+    ? `<button class="btn laranja${tudoFeito ? '' : ' grande'}" data-acao="desfazer">${ic('desfazer', tudoFeito ? 32 : 48, 2.6)} DESFAZER</button>`
+    : `<button class="btn verde grande" data-acao="feito">${ic('certo', 56, 3)} FEITO</button>`}
 </main>`,
         ligar(r) {
-          ao(r, '[data-acao=voltar]', () => {
-            if (m.passo > 0) { m.passo--; A.ir('passo'); } else { A.estado.mistura = null; A.ir('escolher'); }
-          });
+          ao(r, '[data-item]', (b) => { m.atual = Number(b.dataset.item); A.ir('passo'); });
+          ao(r, '[data-acao=seguir]', () => A.ir('destino'));
           ao(r, '[data-acao=feito]', () => {
-            m.passo++;
-            A.ir(m.passo >= itens.length ? 'destino' : 'passo');
+            m.feitos.push(i);
+            m.ordem.push({ insumoId: it.insumoId, quando: new Date().toISOString() });
+            // próximo que falta, depois deste (dá a volta no fim)
+            const proximo = itens.map((_, k) => (i + 1 + k) % itens.length).find((k) => !m.feitos.includes(k));
+            if (proximo === undefined) return A.ir('destino');
+            m.atual = proximo;
+            A.ir('passo');
           });
+          ao(r, '[data-acao=desfazer]', () => {
+            m.feitos = m.feitos.filter((k) => k !== i);
+            const pos = m.ordem.map((o) => o.insumoId).lastIndexOf(it.insumoId);
+            if (pos >= 0) m.ordem.splice(pos, 1);
+            A.ir('passo');
+            A.mostrarAviso(ins.nome + ': desfeito', 'laranja');
+          });
+          ao(r, '[data-acao=voltar]', () => {
+            if (!m.feitos.length) { A.estado.mistura = null; A.ir('escolher'); } else A.ir('sairMistura');
+          });
+        },
+      };
+    },
+
+    // SAIR NO MEIO DA MISTURA? (confirmação)
+    async sairMistura() {
+      const m = A.estado.mistura;
+      const n = m.feitos.length;
+      return {
+        fala: `Sair da mistura? Você já colocou ${n} ${n === 1 ? 'insumo' : 'insumos'}. Se sair, esta mistura não fica registrada. Para continuar, toque no botão verde.`,
+        html: `
+<main class="tela centro">
+  <div class="topo"><span class="vago"></span><span class="espaco"></span>${btnFalar()}</div>
+  <div class="circulo-alerta laranja">${ic('atencao', 72, 2.2)}</div>
+  <h1 class="titulo-falta laranja">SAIR DA MISTURA?</h1>
+  <p class="instrucao">Já colocou ${n} de ${m.formula.itens.length}. Se sair, esta mistura <b>não fica registrada</b>.</p>
+  <div class="espaco"></div>
+  <button class="btn verde grande" data-acao="continuar">${ic('seguir', 44, 2.6)} CONTINUAR</button>
+  <button class="btn" data-acao="sair">${ic('voltar', 30, 2.6)} SAIR SEM REGISTRAR</button>
+</main>`,
+        ligar(r) {
+          ao(r, '[data-acao=continuar]', () => A.ir('passo'));
+          ao(r, '[data-acao=sair]', () => { A.estado.mistura = null; A.ir('escolher'); });
         },
       };
     },
@@ -439,6 +496,7 @@ window.App = window.App || {};
               inicio: m.inicio, fim: new Date().toISOString(),
             });
             reg.avisoFalta = m.avisoFalta;
+            reg.ordem = m.ordem; // em que ordem o operador colocou os insumos
             try {
               await C().salvarMistura(reg);
             } catch (e) {
@@ -452,7 +510,7 @@ window.App = window.App || {};
           };
           ao(r, '[data-acao=voltar]', () => {
             const m = A.estado.mistura;
-            m.passo = m.formula.itens.length - 1;
+            m.atual = m.formula.itens.length - 1; // volta mostrando o último insumo (com DESFAZER)
             A.ir('passo');
           });
           ao(r, '[data-pasto]', (b) => {

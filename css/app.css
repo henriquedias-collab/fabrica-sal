@@ -417,3 +417,20 @@ select.campo { font-size: 22px; padding: 0 12px; }
 @keyframes pulsar { 50% { box-shadow: 0 0 0 10px rgba(168, 35, 27, 0.25); } }
 @media (prefers-reduced-motion: reduce) { .gravando { animation: none; } }
 .nota-verde { margin: 0; font-size: 18px; text-align: center; opacity: 0.95; }
+
+/* ---------- Passo da mistura com ordem livre ---------- */
+.minis .mini { min-height: 72px; height: auto; padding: 4px 2px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+.mini.falta { opacity: 1; }
+.mini.agora { border: 5px solid var(--tinta); box-shadow: 0 4px 0 var(--tinta); }
+.mini.feito.agora { border-color: var(--tinta) !important; }
+.contador-passo b { font-size: 34px; }
+.contador-passo .bloco { display: block; font-size: 18px; }
+.quantidade.apagada { opacity: 0.45; }
+.selo-feito {
+  align-self: center; display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+  border-radius: 999px; background: var(--verde-claro); color: var(--verde); border: 3px solid var(--verde);
+  font-size: 22px; font-weight: 700;
+}
+.btn.laranja { background: var(--laranja); border-color: var(--laranja); color: #fff; }
+.circulo-alerta.laranja { background: var(--laranja); }
+.titulo-falta.laranja { color: var(--laranja-texto); }
