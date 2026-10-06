@@ -509,3 +509,7 @@ select.campo { font-size: 22px; padding: 0 12px; }
 .contagem .rotulo { margin-bottom: 0; }
 .btn-menu.painel-menu { background: var(--verde); border-color: var(--verde); color: #fff; }
 .btn-menu.painel-menu small { color: #fff; opacity: 0.9; }
+
+/* Marca do app (ícone + nome) no alto da tela inicial e da Área do dono */
+.marca { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: -10px; font-size: 20px; font-weight: 700; color: #a65300; }
+.marca img { display: block; border-radius: 7px; }

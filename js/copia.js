@@ -71,7 +71,7 @@ window.App = window.App || {};
     const texto = JSON.stringify({ app: MARCA, formato: FORMATO, criadaEm, lojas, config });
     const d = new Date(criadaEm);
     const p = (n) => String(n).padStart(2, '0');
-    const nome = `fabrica-sal-copia-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}h${p(d.getMinutes())}.txt`;
+    const nome = `cocho-copia-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}h${p(d.getMinutes())}.txt`;
     return { criadaEm, lojas, arquivo: new File([texto], nome, { type: 'text/plain' }) };
   }
 
@@ -232,7 +232,7 @@ window.App = window.App || {};
           U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           U().ao(r, '[data-acao=enviar]', async () => {
             try {
-              await navigator.share({ files: [arquivo], title: 'Cópia do app Fábrica de Sal' });
+              await navigator.share({ files: [arquivo], title: 'Cópia do app Cocho' });
               await feito('Cópia guardada. Confira se apareceu no Drive.');
             } catch (e) {
               if (e && e.name === 'AbortError') return; // a pessoa fechou a lista sem escolher

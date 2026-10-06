@@ -223,6 +223,7 @@ window.App = window.App || {};
         fala: 'Área do dono. Escolha o que quer cadastrar ou conferir.',
         html: `
 <main class="tela">
+  ${U().marca()}
   ${topo('ÁREA DO DONO')}
   ${avisoCopia}
   <button class="btn-menu painel-menu" data-ir="painel">${ic('grafico', 40, 2.2)}<span>Painel<small>Produção, estoque, consumo, compras e problemas</small></span>${ic('seguir', 28, 2.4)}</button>

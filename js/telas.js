@@ -54,6 +54,11 @@ window.App = window.App || {};
     return `<svg width="${tam || 28}" height="${tam || 28}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${traco || 2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[nome]}</svg>`;
   }
 
+  // Ícone pequeno + nome do app, no alto da tela inicial e da Área do dono
+  function marca() {
+    return '<div class="marca"><img src="icones/icone.svg" alt="" width="30" height="30"><span>Cocho</span></div>';
+  }
+
   function btnFalar() {
     return `<button class="btn-redondo escuro" data-falar aria-label="Ouvir a instrução" aria-pressed="false">${ic('som', 30)}</button>`;
   }
@@ -251,6 +256,7 @@ window.App = window.App || {};
         fala: `${saudacao}, ${p.nome}. Para fazer uma mistura, toque no botão verde. Se chegou insumo, toque no caminhão. Se deu problema, toque no botão vermelho. ${falaAlertas}`,
         html: `
 <main class="tela">
+  ${marca()}
   <div class="topo">
     <button class="btn-pessoa" data-acao="trocar" aria-label="Trocar de pessoa (agora: ${esc(p.nome)})">${avatar(p, 64)}</button>
     <div class="saudacao">${saudacao},<br><b>${esc(p.nome)}</b></div>
@@ -660,5 +666,5 @@ window.App = window.App || {};
     });
   }
 
-  A.ui = { esc, ic, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
+  A.ui = { esc, ic, marca, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
 })();
