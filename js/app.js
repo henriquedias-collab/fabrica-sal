@@ -27,7 +27,7 @@ window.App = window.App || {};
     } else if (!doDono && nome !== 'senha') {
       A.estado.donoLiberado = false;
     }
-    if (['inicio', 'escolher', 'aviso', 'passo', 'destino', 'pronta', 'sairMistura', 'chegada', 'chegadaContar', 'chegadaPronta', 'problema', 'problemaInsumo', 'problemaDetalhe', 'problemaPronto'].includes(nome) && !A.estado.pessoa) nome = 'quem';
+    if (['inicio', 'escolher', 'tamanho', 'aviso', 'passo', 'destino', 'pronta', 'sairMistura', 'chegada', 'chegadaContar', 'chegadaPronta', 'problema', 'problemaInsumo', 'problemaDetalhe', 'problemaPronto'].includes(nome) && !A.estado.pessoa) nome = 'quem';
     if (['aviso', 'passo', 'destino', 'sairMistura'].includes(nome) && !A.estado.mistura) nome = 'inicio';
     const tela = await A.telas[nome](params || {});
     const raiz = document.getElementById('app');

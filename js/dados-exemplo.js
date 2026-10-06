@@ -20,11 +20,11 @@ window.App = window.App || {};
   // itens: kg de cada insumo por batida, na ordem em que entram no misturador
   const formulas = [
     {
-      id: 'ex-mineral', nome: 'Sal mineral', numero: 1, cor: '#1f4fa0', corClara: '#dbe5f5',
+      id: 'ex-mineral', nome: 'Sal mineral', numero: 1, cor: '#1f4fa0', corClara: '#dbe5f5', tamanhos: [250, 500], tamanhoPadrao: 500,
       itens: [{ insumoId: 'ex-sal', kg: 350 }, { insumoId: 'ex-nucleo', kg: 150 }],
     },
     {
-      id: 'ex-proteinado', nome: 'Proteinado', numero: 2, cor: '#a65300', corClara: '#f8e2c9',
+      id: 'ex-proteinado', nome: 'Proteinado', numero: 2, cor: '#a65300', corClara: '#f8e2c9', tamanhos: [250, 500], tamanhoPadrao: 500,
       itens: [
         { insumoId: 'ex-farelo', kg: 200 },
         { insumoId: 'ex-sal', kg: 150 },

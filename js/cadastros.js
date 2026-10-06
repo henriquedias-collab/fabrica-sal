@@ -400,13 +400,13 @@ window.App = window.App || {};
   <p class="ajuda">As quantidades vêm do técnico ou nutricionista. O app só segue a fórmula e registra.</p>
   <button class="btn verde" data-acao="novo">${ic('mais', 34, 2.6)} NOVA FÓRMULA</button>
   ${lista.map((f) => {
-    const total = f.itens.reduce((s, it) => s + it.kg, 0);
     const quebrada = f.itens.some((it) => !ids.has(it.insumoId));
+    const ts = C().tamanhos(f);
     return `
   <button class="item-cad" data-id="${esc(f.id)}">
     ${miniatura(f.foto, f.corClara, f.cor, 'misturar')}
     <span class="item-texto"><b>${f.numero} · ${esc(f.nome)}</b>
-      <small>${f.itens.length} ${f.itens.length === 1 ? 'insumo' : 'insumos'} · ${C().numero(total)} kg por batida</small></span>
+      <small>${f.itens.length} ${f.itens.length === 1 ? 'insumo' : 'insumos'} · batida ${ts.map((t) => C().numero(t)).join(' ou ')} kg</small></span>
     ${quebrada ? '<span class="etiqueta ruim">falta insumo</span>' : etiquetaExemplo(f)}
   </button>`;
   }).join('') || '<p class="vazio">Nenhuma fórmula cadastrada.</p>'}
@@ -429,6 +429,10 @@ window.App = window.App || {};
       const e = atual
         ? { nome: atual.nome, numero: atual.numero, cor: atual.cor, corClara: atual.corClara, foto: atual.foto || null, itens: atual.itens.map((it) => Object.assign({}, it)) }
         : { nome: '', numero: proximoNumero, cor: CORES_FORTES[0][0], corClara: CORES_FORTES[0][1], foto: null, itens: [] };
+      // Tamanhos da batida. Sem tamanhos cadastrados ("automático"), o tamanho é o total da receita e acompanha a receita.
+      e.tamanhosAuto = !(atual && Array.isArray(atual.tamanhos) && atual.tamanhos.length);
+      e.tamanhos = e.tamanhosAuto ? [] : C().tamanhos(atual);
+      e.padrao = atual && !e.tamanhosAuto ? C().tamanhoPadrao(atual) : null;
 
       if (!insumos.length) {
         return {
@@ -462,6 +466,16 @@ window.App = window.App || {};
   <div id="itens" class="itens"></div>
   <button class="btn" data-acao="adicionar">${ic('mais', 30, 2.6)} ADICIONAR INSUMO</button>
   <p class="total-batida" id="total"></p>
+  <div class="rotulo">Tamanhos da batida</div>
+  <p class="ajuda">A receita acima é a batida base. O operador escolhe o tamanho em botões grandes e o app recalcula
+    cada insumo na mesma proporção. Toque num tamanho para ele ser o normal (padrão).</p>
+  <div id="tamanhos" class="tamanhos"></div>
+  <div class="campo-linha">
+    <input id="novo-tamanho" class="campo" type="text" inputmode="decimal" autocomplete="off" placeholder="Outro tamanho" aria-label="Outro tamanho da batida, em kg">
+    <span class="sufixo">kg</span>
+  </div>
+  <button class="btn" data-acao="add-tamanho">${ic('mais', 30, 2.6)} ADICIONAR TAMANHO</button>
+  <div id="previa" class="previa-tamanhos"></div>
   <div class="rotulo">Cor do cartão</div>
   ${seletorCores(CORES_FORTES, e.cor)}
   <div class="rotulo">Foto do sal (opcional)</div>
@@ -475,9 +489,58 @@ window.App = window.App || {};
           ligarFoto(r, e);
           ligarCores(r, (k) => { e.cor = CORES_FORTES[k][0]; e.corClara = CORES_FORTES[k][1]; });
 
+          // ---- tamanhos da batida ----
+          const totalReceita = () => Math.round(e.itens.reduce((s, it) => s + (it.kg > 0 ? it.kg : 0), 0) * 10) / 10;
+          const listaTamanhos = () => (e.tamanhosAuto ? (totalReceita() > 0 ? [totalReceita()] : []) : e.tamanhos);
+          const padraoAtual = () => {
+            const ts = listaTamanhos();
+            return ts.includes(e.padrao) ? e.padrao : ts[ts.length - 1];
+          };
+          const desenharTamanhos = () => {
+            const ts = listaTamanhos();
+            const pd = padraoAtual();
+            r.querySelector('#tamanhos').innerHTML = ts.length ? ts.map((t) => `
+    <span class="chip-tamanho${t === pd ? ' padrao' : ''}">
+      <button class="chip-escolher" data-padrao="${t}" aria-pressed="${t === pd}">${t === pd ? ic('certo', 20, 3) : ''} ${C().numero(t)} kg${t === pd ? ' · normal' : ''}</button>
+      ${e.tamanhosAuto ? '' : `<button class="chip-tirar" data-tirar-tamanho="${t}" aria-label="Tirar ${C().numero(t)} kg">${ic('mais', 18, 2.6)}</button>`}
+    </span>`).join('') : '<p class="ajuda">Preencha a receita para ver o tamanho.</p>';
+            // Prévia: como fica cada tamanho, em sacos
+            const base = totalReceita();
+            const validos = e.itens.filter((it) => porId[it.insumoId] && it.kg > 0);
+            r.querySelector('#previa').innerHTML = base > 0 && validos.length ? ts.map((t) => `
+    <p class="ajuda"><b>${C().numero(t)} kg:</b> ${validos.map((it) =>
+      `${esc(porId[it.insumoId].nome)} ${esc(C().qtdTexto(Math.round((it.kg * t / base) * 10) / 10, porId[it.insumoId]))}`).join(' · ')}</p>`).join('') : '';
+          };
+          r.querySelector('#tamanhos').addEventListener('click', (ev) => {
+            const b = ev.target.closest('button');
+            if (!b) return;
+            if (b.dataset.padrao !== undefined) e.padrao = Number(b.dataset.padrao);
+            if (b.dataset.tirarTamanho !== undefined) {
+              e.tamanhos = e.tamanhos.filter((t) => t !== Number(b.dataset.tirarTamanho));
+              if (!e.tamanhos.length) e.tamanhosAuto = true; // sem nenhum: volta a ser o total da receita
+            }
+            desenharTamanhos();
+          });
+          U().ao(r, '[data-acao=add-tamanho]', () => {
+            const campo = r.querySelector('#novo-tamanho');
+            const v = lerNumero(campo.value);
+            if (!(v > 0)) return mostrarErro(r, 'Escreva o tamanho da batida em kg (ex.: 350).');
+            r.querySelector('.erro').hidden = true;
+            if (e.tamanhosAuto) {
+              e.tamanhos = totalReceita() > 0 ? [totalReceita()] : [];
+              if (e.padrao === null && e.tamanhos.length) e.padrao = e.tamanhos[0];
+              e.tamanhosAuto = false;
+            }
+            const t = Math.round(v * 10) / 10;
+            if (!e.tamanhos.includes(t)) e.tamanhos = e.tamanhos.concat(t).sort((a, b) => a - b);
+            campo.value = '';
+            desenharTamanhos();
+          });
+
           const mostrarTotal = () => {
-            const total = e.itens.reduce((s, it) => s + (it.kg > 0 ? it.kg : 0), 0);
-            r.querySelector('#total').textContent = e.itens.length ? `Total de uma batida: ${C().numero(total)} kg` : '';
+            const total = totalReceita();
+            r.querySelector('#total').textContent = e.itens.length ? `Total da batida base: ${C().numero(total)} kg` : '';
+            desenharTamanhos();
           };
           const ajudaItem = (it) => {
             const ins = porId[it.insumoId];
@@ -554,6 +617,9 @@ window.App = window.App || {};
             const registro = Object.assign(atual || { id: A.db.novoId('formula'), criadoEm: new Date().toISOString() }, {
               nome, numero, cor: e.cor, corClara: e.corClara, foto: e.foto || null,
               itens: e.itens.map((it) => ({ insumoId: it.insumoId, kg: Math.round(it.kg * 10) / 10 })),
+              // Sem tamanhos cadastrados: a batida é o total da receita (como era antes)
+              tamanhos: e.tamanhosAuto ? [] : e.tamanhos.slice(),
+              tamanhoPadrao: e.tamanhosAuto ? null : padraoAtual(),
               exemplo: false,
             });
             await A.db.salvar('formulas', registro);

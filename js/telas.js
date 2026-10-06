@@ -102,6 +102,21 @@ window.App = window.App || {};
     return d.tipo === 'deposito' ? 'Depósito' : `Pasto ${d.numero} · ${d.nome}`;
   }
 
+  // Começa a mistura no tamanho escolhido: recalcula os kg na proporção da receita e confere o estoque.
+  // Só fica guardada no celular depois do 1º saco (antes disso, voltar não deixa rastro).
+  function iniciarMistura(f, tamanhoKg, mapa) {
+    const escalada = C().escalarFormula(f, tamanhoKg);
+    const faltas = C().faltas(escalada, mapa);
+    A.estado.mistura = C().novaMistura({
+      formula: escalada, insumosPorId: mapa, pessoa: A.estado.pessoa,
+      avisoFalta: faltas.length
+        ? faltas.map((x) => ({ insumoId: x.insumo.id, precisaKg: x.precisaKg, temKg: x.temKg }))
+        : null,
+    });
+    if (faltas.length) A.ir('aviso', { faltas });
+    else A.ir('passo');
+  }
+
   // Continua a mistura que ficou pela metade (guardada no celular)
   async function continuarMistura() {
     const m = await C().carregarAndamento();
@@ -344,17 +359,38 @@ window.App = window.App || {};
           ao(r, '[data-acao=voltar]', () => A.ir('inicio'));
           ao(r, '[data-formula]', (b) => {
             const f = formulas.find((x) => x.id === b.dataset.formula);
-            const faltas = C().faltas(f, mapa);
-            // Só fica guardada no celular depois do 1º saco (antes disso, voltar não deixa rastro)
-            A.estado.mistura = C().novaMistura({
-              formula: f, insumosPorId: mapa, pessoa: A.estado.pessoa,
-              avisoFalta: faltas.length
-                ? faltas.map((x) => ({ insumoId: x.insumo.id, precisaKg: x.precisaKg, temKg: x.temKg }))
-                : null,
-            });
-            if (faltas.length) A.ir('aviso', { faltas });
-            else A.ir('passo');
+            // Mais de um tamanho de batida: o operador escolhe; um só: começa direto
+            if (C().tamanhos(f).length > 1) A.ir('tamanho', { formulaId: f.id });
+            else iniciarMistura(f, C().tamanhoPadrao(f), mapa);
           });
+        },
+      };
+    },
+
+    // TAMANHO DA BATIDA (só quando a fórmula tem mais de um tamanho cadastrado)
+    async tamanho({ formulaId }) {
+      const [f, insumos] = await Promise.all([A.db.pegar('formulas', formulaId), A.db.todos('insumos')]);
+      if (!f) return A.telas.escolher();
+      const mapa = porId(insumos);
+      const ts = C().tamanhos(f);
+      const padrao = C().tamanhoPadrao(f);
+      const maior = ts[ts.length - 1];
+      return {
+        fala: `${f.nome}. Qual o tamanho da batida? ` + ts.map((t) => `${C().numero(t)} quilos${t === padrao ? ', o normal' : ''}.`).join(' '),
+        html: `
+<main class="tela">
+  <div class="topo">${btnVoltar()}<h1 class="titulo">TAMANHO DA BATIDA</h1>${btnFalar()}</div>
+  <div class="faixa-formula" style="--cor:${f.cor}"><span>${esc(f.nome.toUpperCase())}</span><span class="numero">${f.numero}</span></div>
+  ${ts.map((t) => `
+  <button class="btn-tamanho${t === padrao ? ' padrao' : ''}" data-tamanho="${t}" aria-label="${C().numero(t)} quilos${t === padrao ? ', o normal' : ''}">
+    ${desenhoCocho(Math.round(60 + 70 * (t / maior)), t === padrao ? '#ffffff' : '#7a3d00')}
+    <span class="kg-tamanho"><b>${C().numero(t)}</b> KG</span>
+    ${t === padrao ? `<span class="selo-normal">${ic('certo', 22, 3)} NORMAL</span>` : ''}
+  </button>`).join('')}
+</main>`,
+        ligar(r) {
+          ao(r, '[data-acao=voltar]', () => A.ir('escolher'));
+          ao(r, '[data-tamanho]', (b) => iniciarMistura(f, Number(b.dataset.tamanho), mapa));
         },
       };
     },

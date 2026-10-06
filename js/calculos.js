@@ -230,6 +230,38 @@ window.App = window.App || {};
     };
   }
 
+  // ---------- tamanho da batida ----------
+  // A receita da fórmula (itens em kg) é a batida BASE. O dono cadastra os tamanhos que o operador pode escolher
+  // (f.tamanhos, em kg) e o padrão (f.tamanhoPadrao). Fórmula antiga sem tamanhos: um tamanho só, o da receita.
+
+  function baseKg(f) {
+    return Math.round(f.itens.reduce((s, it) => s + (it.kg || 0), 0) * 10) / 10;
+  }
+
+  function tamanhos(f) {
+    const lista = (Array.isArray(f.tamanhos) ? f.tamanhos : []).filter((t) => t > 0);
+    const unicos = [...new Set(lista.map((t) => Math.round(t * 10) / 10))].sort((a, b) => a - b);
+    return unicos.length ? unicos : [baseKg(f)];
+  }
+
+  function tamanhoPadrao(f) {
+    const ts = tamanhos(f);
+    if (ts.includes(f.tamanhoPadrao)) return f.tamanhoPadrao;
+    const base = baseKg(f);
+    return ts.includes(base) ? base : ts[ts.length - 1];
+  }
+
+  // A fórmula na proporção da receita, para o tamanho pedido (kg de cada insumo arredondados em 0,1 kg)
+  function escalarFormula(f, tamanhoKg) {
+    const base = baseKg(f);
+    const fator = base > 0 ? tamanhoKg / base : 1;
+    return Object.assign({}, f, {
+      baseKg: base,
+      tamanhoKg,
+      itens: f.itens.map((it) => Object.assign({}, it, { kg: Math.round(it.kg * fator * 10) / 10 })),
+    });
+  }
+
   // ---------- mistura saco por saco ----------
   // A mistura em andamento fica guardada em config 'misturaAndamento' a cada toque (sobrevive ao app fechar).
   // m.alvos[k] = { n: sacos inteiros, resto: kg que sobra, kgPor } — fixados no começo da mistura.
@@ -249,6 +281,7 @@ window.App = window.App || {};
     return {
       id: App.db.novoId('mistura'),
       formula: { id: formula.id, nome: formula.nome, numero: formula.numero, cor: formula.cor, corClara: formula.corClara,
+        tamanhoKg: formula.tamanhoKg || baseKg(formula), baseKg: formula.baseKg || baseKg(formula),
         itens: formula.itens.map((it) => ({ insumoId: it.insumoId, kg: it.kg })) },
       alvos: formula.itens.map((it) => alvoItem(it.kg, insumosPorId[it.insumoId])),
       colocado: formula.itens.map(() => ({ unid: 0, resto: false })),
@@ -342,7 +375,8 @@ window.App = window.App || {};
       formulaNome: m.formula.nome,
       itens,
       totalKg: Math.round(itens.reduce((s, it) => s + it.kg, 0) * 10) / 10,
-      totalFormulaKg: itens.reduce((s, it) => s + it.kgFormula, 0),
+      totalFormulaKg: Math.round(itens.reduce((s, it) => s + it.kgFormula, 0) * 10) / 10,
+      tamanhoKg: m.formula.tamanhoKg || null, // tamanho da batida escolhido (a receita base pode ser outra)
       status: completa ? 'completa' : 'incompleta',
       encerradaPeloDono: !!encerrada,
       destino,
@@ -418,6 +452,7 @@ window.App = window.App || {};
   App.calc = {
     DIA, DIAS_PAINEL, DIAS_COMPRA, UNIDADES, numero, unidade, nomeUnidade, qtd, qtdTexto, qtdFala, consumoDiario,
     situacaoEstoque, alertasEstoque, painel, faltas,
+    baseKg, tamanhos, tamanhoPadrao, escalarFormula,
     montarMistura, novaMistura, progresso, totalColocadoKg, gravarAndamento, carregarAndamento, apagarAndamento,
     faltando, concluirMistura, salvarEntrada, iniciais, quando,
   };
