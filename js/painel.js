@@ -65,7 +65,7 @@ window.App = window.App || {};
     return `
   <section class="secao" aria-labelledby="t-prevreal">
     <h2 id="t-prevreal">Previsto x real</h2>
-    <p class="ajuda">Previsto = o que as fórmulas pediram. Real = previsto + a diferença achada ao contar o estoque.</p>
+    <p class="ajuda">Previsto = o que as misturas registraram, saco por saco (mistura incompleta conta só o que foi colocado). Real = previsto + a diferença achada ao contar o estoque.</p>
     ${lista.length ? `<ul class="lista">${lista.map(linha).join('')}</ul>` : '<p>Nenhuma mistura nem contagem nesses 7 dias.</p>'}
     ${algumSem ? '<p class="ajuda">Para comparar, conte o estoque pelo menos uma vez por semana.</p>' : ''}
     <button class="btn" data-acao="contar">${ic('saco', 30, 2)} CONTAR ESTOQUE</button>

@@ -42,7 +42,7 @@ window.App = window.App || {};
 
   // "3 sacos + 10 kg"
   function qtdTexto(kg, ins) {
-    const q = qtd(kg, ins);
+    const q = qtd(Math.max(0, kg), ins); // estoque calculado pode ficar abaixo de zero: mostra 0
     const partes = [];
     if (q.n) partes.push(q.n + ' ' + nomeUnidade(q.n, ins));
     if (q.resto || !q.n) partes.push(numero(q.resto) + ' kg');
@@ -51,7 +51,7 @@ window.App = window.App || {};
 
   // Para a voz: "3 sacos e mais 10 quilos"
   function qtdFala(kg, ins) {
-    const q = qtd(kg, ins);
+    const q = qtd(Math.max(0, kg), ins);
     const partes = [];
     if (q.n) partes.push(q.n + ' ' + nomeUnidade(q.n, ins));
     if (q.resto || !q.n) partes.push(numero(q.resto) + ' quilos');
@@ -163,7 +163,7 @@ window.App = window.App || {};
     let kgDeposito = 0;
     doPeriodo.forEach((m) => {
       if (m.destino && m.destino.tipo === 'pasto') kgPasto[m.destino.id] = (kgPasto[m.destino.id] || 0) + (m.totalKg || 0);
-      else kgDeposito += m.totalKg || 0;
+      else if (m.destino && m.destino.tipo === 'deposito') kgDeposito += m.totalKg || 0;
     });
     const consumoPastos = dados.pastos
       .slice()
@@ -206,11 +206,13 @@ window.App = window.App || {};
       .filter((f) => f.insumo && f.temKg < f.precisaKg);
   }
 
+  // Mistura completa de uma vez (usada nos dados de exemplo): colocado = o que a fórmula pede
   function montarMistura({ formula, insumosPorId, destino, pessoa, inicio, fim, exemplo }) {
     const itens = formula.itens.map((it) => ({
       insumoId: it.insumoId,
       nome: insumosPorId[it.insumoId] ? insumosPorId[it.insumoId].nome : '?',
       kg: it.kg,
+      kgFormula: it.kg,
     }));
     return {
       id: App.db.novoId('mistura'),
@@ -218,6 +220,7 @@ window.App = window.App || {};
       formulaNome: formula.nome,
       itens,
       totalKg: itens.reduce((s, it) => s + it.kg, 0),
+      status: 'completa',
       destino,
       pessoaId: pessoa ? pessoa.id : null,
       pessoaNome: pessoa ? pessoa.nome : '',
@@ -227,23 +230,136 @@ window.App = window.App || {};
     };
   }
 
-  // Salva a mistura e baixa do estoque estimado o que a fórmula pediu (tudo junto)
-  async function salvarMistura(mistura) {
+  // ---------- mistura saco por saco ----------
+  // A mistura em andamento fica guardada em config 'misturaAndamento' a cada toque (sobrevive ao app fechar).
+  // m.alvos[k] = { n: sacos inteiros, resto: kg que sobra, kgPor } — fixados no começo da mistura.
+  // m.colocado[k] = { unid: sacos já colocados, resto: true se a sobra em kg já foi colocada }.
+  // O estoque baixa a cada saco colocado (e volta no −1), na mesma gravação do progresso.
+
+  const CHAVE_ANDAMENTO = 'misturaAndamento';
+
+  function alvoItem(kg, ins) {
+    const { kgPor } = unidade(ins);
+    if (!kgPor) return { n: 0, resto: Math.round(kg * 10) / 10, kgPor: 0 };
+    const q = qtd(kg, ins);
+    return { n: q.n, resto: q.resto, kgPor };
+  }
+
+  function novaMistura({ formula, insumosPorId, pessoa, avisoFalta }) {
+    return {
+      id: App.db.novoId('mistura'),
+      formula: { id: formula.id, nome: formula.nome, numero: formula.numero, cor: formula.cor, corClara: formula.corClara,
+        itens: formula.itens.map((it) => ({ insumoId: it.insumoId, kg: it.kg })) },
+      alvos: formula.itens.map((it) => alvoItem(it.kg, insumosPorId[it.insumoId])),
+      colocado: formula.itens.map(() => ({ unid: 0, resto: false })),
+      insumos: insumosPorId,
+      atual: 0,
+      ordem: [],
+      inicio: new Date().toISOString(),
+      pessoaId: pessoa ? pessoa.id : null,
+      pessoaNome: pessoa ? pessoa.nome : '',
+      avisoFalta: avisoFalta || null,
+      guardada: false, // true depois do 1º saco: aí aparece no Início se for interrompida
+    };
+  }
+
+  // Situação de um insumo da mistura
+  function progresso(m, k) {
+    const a = m.alvos[k];
+    const c = m.colocado[k];
+    const completo = c.unid >= a.n && (a.resto <= 0 || c.resto);
+    const kg = Math.round((c.unid * a.kgPor + (c.resto ? a.resto : 0)) * 10) / 10;
+    return { n: a.n, resto: a.resto, kgPor: a.kgPor, unid: c.unid, restoFeito: c.resto, completo, kg, kgAlvo: m.formula.itens[k].kg };
+  }
+
+  function totalColocadoKg(m) {
+    return m.formula.itens.reduce((s, _, k) => s + progresso(m, k).kg, 0);
+  }
+
+  // Grava o progresso (e baixa/devolve o estoque do que mudou). deltas = { insumoId: kg colocados a mais (ou − a menos) }
+  async function gravarAndamento(m, deltas) {
+    const ids = Object.keys(deltas || {}).filter((id) => Math.abs(deltas[id]) > 0.001);
+    const alterados = [];
+    for (const id of ids) {
+      const ins = await App.db.pegar('insumos', id);
+      if (!ins) continue;
+      ins.estoqueKg = Math.round((ins.estoqueKg - deltas[id]) * 10) / 10;
+      alterados.push(ins);
+      if (m.insumos[id]) m.insumos[id].estoqueKg = ins.estoqueKg;
+    }
+    m.guardada = true;
+    m.atualizadaEm = new Date().toISOString();
+    const salvo = Object.assign({}, m);
+    delete salvo.insumos; // as fotos ficam no cadastro; ao continuar, os insumos são lidos de novo
+    await App.db.transacao(['insumos', 'config'], (l) => {
+      alterados.forEach((i) => l('insumos').put(i));
+      l('config').put({ chave: CHAVE_ANDAMENTO, valor: salvo });
+    });
+  }
+
+  // Mistura parada (ou null). Com os insumos lidos de novo do cadastro.
+  async function carregarAndamento() {
+    const salvo = await App.db.config(CHAVE_ANDAMENTO);
+    if (!salvo) return null;
     const insumos = await App.db.todos('insumos');
     const porId = {};
     insumos.forEach((i) => { porId[i.id] = i; });
-    const alterados = [];
-    mistura.itens.forEach((it) => {
-      const ins = porId[it.insumoId];
-      if (!ins) return;
-      ins.estoqueKg = Math.max(0, Math.round((ins.estoqueKg - it.kg) * 10) / 10);
-      alterados.push(ins);
+    return Object.assign({}, salvo, { insumos: porId, faltaInsumo: salvo.formula.itens.some((it) => !porId[it.insumoId]) });
+  }
+
+  function apagarAndamento() {
+    return App.db.apagar('config', CHAVE_ANDAMENTO);
+  }
+
+  // O que falta: [{ nome, texto: "8 sacos" }] só dos insumos incompletos
+  function faltando(m) {
+    return m.formula.itens.map((it, k) => {
+      const p = progresso(m, k);
+      if (p.completo) return null;
+      const ins = m.insumos[it.insumoId] || { nome: '?' };
+      const partes = [];
+      if (p.unid < p.n) partes.push(`${p.n - p.unid} ${nomeUnidade(p.n - p.unid, ins)}`);
+      if (p.resto > 0 && !p.restoFeito) partes.push(`${numero(p.resto)} kg`);
+      return { nome: ins.nome, texto: partes.join(' + ') };
+    }).filter(Boolean);
+  }
+
+  // Fecha a mistura: grava o registro com o que foi colocado DE FATO e apaga o andamento (tudo junto).
+  // O estoque já baixou saco por saco. encerrada = o dono fechou uma mistura que ficou pela metade.
+  async function concluirMistura(m, { destino, pessoa, encerrada }) {
+    const itens = m.formula.itens.map((it, k) => {
+      const p = progresso(m, k);
+      const ins = m.insumos[it.insumoId];
+      return {
+        insumoId: it.insumoId, nome: ins ? ins.nome : '?', kg: p.kg, kgFormula: it.kg,
+        unidades: p.unid, unidadesFormula: p.n, unidade: ins ? ins.unidade || 'saco' : 'saco',
+      };
     });
-    await App.db.transacao(['misturas', 'insumos'], (l) => {
-      l('misturas').put(mistura);
-      alterados.forEach((i) => l('insumos').put(i));
+    const completa = m.formula.itens.every((_, k) => progresso(m, k).completo);
+    const reg = {
+      id: m.id,
+      formulaId: m.formula.id,
+      formulaNome: m.formula.nome,
+      itens,
+      totalKg: Math.round(itens.reduce((s, it) => s + it.kg, 0) * 10) / 10,
+      totalFormulaKg: itens.reduce((s, it) => s + it.kgFormula, 0),
+      status: completa ? 'completa' : 'incompleta',
+      encerradaPeloDono: !!encerrada,
+      destino,
+      pessoaId: m.pessoaId,
+      pessoaNome: m.pessoaNome,
+      inicio: m.inicio,
+      fim: new Date().toISOString(),
+      ordem: m.ordem,
+      avisoFalta: m.avisoFalta,
+      exemplo: false,
+    };
+    if (pessoa && pessoa.id !== m.pessoaId) { reg.terminadaPorId = pessoa.id; reg.terminadaPorNome = pessoa.nome; }
+    await App.db.transacao(['misturas', 'config'], (l) => {
+      l('misturas').put(reg);
+      l('config').delete(CHAVE_ANDAMENTO);
     });
-    return mistura;
+    return reg;
   }
 
   // Chegou insumo: soma ao estoque e registra a entrada (tudo junto).
@@ -302,6 +418,7 @@ window.App = window.App || {};
   App.calc = {
     DIA, DIAS_PAINEL, DIAS_COMPRA, UNIDADES, numero, unidade, nomeUnidade, qtd, qtdTexto, qtdFala, consumoDiario,
     situacaoEstoque, alertasEstoque, painel, faltas,
-    montarMistura, salvarMistura, salvarEntrada, iniciais, quando,
+    montarMistura, novaMistura, progresso, totalColocadoKg, gravarAndamento, carregarAndamento, apagarAndamento,
+    faltando, concluirMistura, salvarEntrada, iniciais, quando,
   };
 })();

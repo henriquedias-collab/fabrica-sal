@@ -577,3 +577,65 @@ select.campo { font-size: 22px; padding: 0 12px; }
 .problema-aberto .btn { margin-top: 0; min-height: 64px; }
 .contagem { display: flex; flex-direction: column; gap: 8px; }
 .contagem .rotulo { margin-bottom: 0; }
+
+/* ---------- Passo da mistura: saco por saco ---------- */
+.mini .prog { font-size: 15px; line-height: 1.1; }
+.contagem-sacos { display: flex; align-items: baseline; justify-content: center; gap: 8px; line-height: 0.95; }
+.feitos-num { font-size: 112px; font-weight: 700; color: var(--tinta); }
+.de-total { font-size: 56px; font-weight: 700; color: var(--tinta-2); }
+.qtd-mais.ok { background: var(--verde-claro); color: var(--verde-escuro); display: inline-flex; align-items: center; gap: 6px; }
+.falta-pilula {
+  padding: 8px 22px; border-radius: 999px; background: var(--terra-escura); color: #fff;
+  font-size: 34px; font-weight: 700; letter-spacing: 1px;
+}
+.fileira-sacos { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; max-width: 100%; }
+.saquinho {
+  width: 36px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  background: var(--neutro); color: #b9a68c;
+}
+.saquinho.cheio { background: var(--verde); color: #fff; }
+.barra-sacos { width: 100%; height: 22px; border-radius: 11px; }
+.barra-sacos span { border-radius: 11px; }
+.linha-contar { display: flex; gap: 12px; align-items: stretch; }
+.linha-contar .btn { margin-bottom: 6px; }
+.linha-contar .btn.grande { flex: 1; font-size: 40px; min-height: 110px; }
+.btn.btn-menos { width: 104px; flex: none; min-height: 110px; font-size: 36px; padding: 0; }
+.rodape-passo { display: flex; gap: 12px; }
+.rodape-passo .btn { flex: 1; min-height: 64px; font-size: 20px; }
+.btn-fala-auto[aria-pressed="true"] { border-color: var(--terra); color: var(--terra-escura); }
+.btn-fala-auto[aria-pressed="false"] { color: var(--tinta-2); }
+
+/* Início: mistura pela metade */
+.cartao-continuar { width: 100%; text-align: left; font: inherit; cursor: pointer; box-shadow: 0 6px 0 var(--laranja); margin-bottom: 6px; }
+.cartao-continuar b { font-size: 22px; }
+.cartao-continuar strong { display: block; font-size: 32px; letter-spacing: 1px; }
+.cartao-continuar span { display: block; font-size: 17px; }
+.cartao-continuar:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--laranja); }
+
+/* Registros: mistura em andamento */
+.secao.em-andamento { border-color: var(--laranja); background: var(--laranja-claro); color: var(--laranja-texto); }
+.secao.em-andamento h2 { display: flex; align-items: center; gap: 8px; color: var(--laranja-texto); }
+.secao.em-andamento .lista li { border-color: rgba(107, 74, 0, 0.2); }
+.secao.em-andamento .lista svg { vertical-align: -3px; }
+
+/* Passo compacto: o −1 e o +1 cabem na tela sem rolar */
+.tela-passo { gap: 12px; }
+.tela-passo .minis .mini { min-height: 62px; }
+.tela-passo .cartao-passo { gap: 6px; padding: 12px 12px 14px; }
+.cabeca-insumo { width: 100%; display: flex; align-items: center; gap: 12px; }
+.cabeca-insumo .foto-insumo { width: 84px; height: 84px; flex: none; border-radius: 20px; }
+.cabeca-insumo .foto-insumo span { display: none; }
+.cabeca-insumo .foto-insumo svg { width: 48px; height: 48px; }
+.cabeca-insumo .nome-insumo { flex: 1; text-align: left; font-size: 30px; }
+.tela-passo .feitos-num { font-size: 100px; }
+.tela-passo .de-total { font-size: 50px; }
+.tela-passo .qtd-un { font-size: 30px; }
+.tela-passo .falta-pilula { font-size: 30px; padding: 6px 20px; }
+.tela-passo .qtd-kg { margin-top: 0; font-size: 20px; }
+.tela-passo .saquinho { width: 21px; height: 28px; border-radius: 6px; }
+.tela-passo .saquinho svg { width: 17px; height: 17px; }
+.tela-passo .fileira-sacos { gap: 3px; }
+.tela-passo .linha-contar .btn.grande, .tela-passo .btn.btn-menos { min-height: 96px; }
+.tela-passo .btn.grande { min-height: 92px; }
+.tela-passo .btn { margin-bottom: 0; }
+.tela-passo .rodape-passo .btn { min-height: 58px; }

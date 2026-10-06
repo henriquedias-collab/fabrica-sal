@@ -47,6 +47,7 @@ window.App = window.App || {};
     nuvem: '<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5H7z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/>',
     baixar: '<path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M4 20h16"/>',
     grafico: '<path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V6"/><path d="M17 16v-8"/>',
+    pausa: '<path d="M9 5v14"/><path d="M15 5v14"/>',
     abrir: '<path d="M12 16V5"/><path d="M7 9.5l5-5 5 5"/><path d="M4 20h16"/>',
   };
 
@@ -97,7 +98,20 @@ window.App = window.App || {};
   }
 
   function textoDestino(d) {
+    if (!d || d.tipo === 'nenhum') return 'Sem destino (encerrada pelo dono)';
     return d.tipo === 'deposito' ? 'Depósito' : `Pasto ${d.numero} · ${d.nome}`;
+  }
+
+  // Continua a mistura que ficou pela metade (guardada no celular)
+  async function continuarMistura() {
+    const m = await C().carregarAndamento();
+    if (!m) return A.ir('inicio');
+    if (m.faltaInsumo) {
+      A.mostrarAviso('Esta mistura usa um insumo que foi apagado. Peça ao dono para encerrar.', 'laranja');
+      return;
+    }
+    A.estado.mistura = m;
+    await A.ir('passo');
   }
 
   // ---------- telas ----------
@@ -259,8 +273,19 @@ window.App = window.App || {};
         return `Atenção: ${a.insumo.nome} está abaixo do mínimo.`;
       }).join(' ');
 
+      // Mistura pela metade (pausada, ou o app fechou no meio)
+      const parada = await C().carregarAndamento();
+      const falta = parada ? C().faltando(parada) : [];
+      const cartaoParada = parada ? `
+  <button class="alerta laranja cartao-continuar" data-acao="continuar">${ic('atencao', 52, 2.4)}<div>
+    <b>MISTURA PELA METADE</b><strong>CONTINUAR</strong>
+    <span>${esc(parada.formula.nome)}${falta.length ? ' · falta: ' + falta.map((x) => `${esc(x.nome)} ${esc(x.texto)}`).join(', ') : ' · falta escolher o destino'}</span></div></button>` : '';
+      const falaParada = parada
+        ? `Tem uma mistura de ${parada.formula.nome} pela metade. Para continuar, toque no botão amarelo de cima. `
+        : '';
+
       return {
-        fala: `${saudacao}, ${p.nome}. Para fazer uma mistura, toque no botão verde. Se chegou insumo, toque no caminhão. Se deu problema, toque no botão vermelho. ${falaAlertas}`,
+        fala: `${saudacao}, ${p.nome}. ${falaParada}Para fazer uma mistura, toque no botão grande com o cocho. Se chegou insumo, toque no caminhão. Se deu problema, toque no botão vermelho. ${falaAlertas}`,
         html: `
 <main class="tela">
   <div class="topo">${marca()}${btnFalar()}</div>
@@ -268,6 +293,7 @@ window.App = window.App || {};
     <button class="btn-pessoa" data-acao="trocar" aria-label="Trocar de pessoa (agora: ${esc(p.nome)})">${avatar(p, 60)}</button>
     <div class="saudacao">${saudacao},<br><b>${esc(p.nome)}</b></div>
   </div>
+  ${cartaoParada}
   <button class="btn-principal" data-acao="misturar">${desenhoCocho(180, '#ffffff')}<span>FAZER MISTURA</span></button>
   <button class="btn-linha" data-acao="chegada">${ic('caminhao', 56, 1.8)}<span>CHEGOU INSUMO</span></button>
   <button class="btn-linha vermelho" data-acao="problema">${ic('problema', 56)}<span>PROBLEMA</span></button>
@@ -275,7 +301,14 @@ window.App = window.App || {};
 </main>`,
         ligar(r) {
           ao(r, '[data-acao=trocar]', () => A.ir('quem'));
-          ao(r, '[data-acao=misturar]', () => A.ir('escolher'));
+          ao(r, '[data-acao=continuar]', () => continuarMistura());
+          ao(r, '[data-acao=misturar]', async () => {
+            if (!parada) return A.ir('escolher');
+            // Uma mistura por vez: primeiro termina a que está pela metade
+            await continuarMistura();
+            A.mostrarAviso('Primeiro termine a mistura que está pela metade');
+            A.voz.falar('Primeiro termine a mistura que está pela metade.');
+          });
           ao(r, '[data-acao=chegada]', () => A.ir('chegada'));
           ao(r, '[data-acao=problema]', () => A.ir('problema'));
           ao(r, '[data-acao=em-breve]', () => {
@@ -312,12 +345,13 @@ window.App = window.App || {};
           ao(r, '[data-formula]', (b) => {
             const f = formulas.find((x) => x.id === b.dataset.formula);
             const faltas = C().faltas(f, mapa);
-            A.estado.mistura = {
-              formula: f, insumos: mapa, atual: 0, feitos: [], ordem: [], inicio: new Date().toISOString(),
+            // Só fica guardada no celular depois do 1º saco (antes disso, voltar não deixa rastro)
+            A.estado.mistura = C().novaMistura({
+              formula: f, insumosPorId: mapa, pessoa: A.estado.pessoa,
               avisoFalta: faltas.length
                 ? faltas.map((x) => ({ insumoId: x.insumo.id, precisaKg: x.precisaKg, temKg: x.temKg }))
                 : null,
-            };
+            });
             if (faltas.length) A.ir('aviso', { faltas });
             else A.ir('passo');
           });
@@ -380,106 +414,242 @@ window.App = window.App || {};
       };
     },
 
-    // PASSO A PASSO DA MISTURA (ordem livre)
-    // m.feitos = posições já colocadas; m.atual = a que aparece na tela; m.ordem = ordem em que foram feitas
+    // PASSO A PASSO DA MISTURA: saco por saco, em qualquer ordem.
+    // Cada toque grava o progresso no celular e baixa o estoque do que foi colocado (ver calculos.js).
     async passo() {
       const m = A.estado.mistura;
       const itens = m.formula.itens;
-      if (!m.feitos) m.feitos = [];
-      if (!m.ordem) m.ordem = [];
-      if (m.atual === undefined) m.atual = 0;
+      if (m.atual === undefined || !itens[m.atual]) m.atual = 0;
       const i = m.atual;
       const it = itens[i];
       const ins = m.insumos[it.insumoId];
-      const s = C().qtd(it.kg, ins);
-      const jaFeito = m.feitos.includes(i);
-      const nFeitos = m.feitos.length;
+      const progs = itens.map((_, k) => C().progresso(m, k));
+      const p = progs[i];
+      const nFeitos = progs.filter((x) => x.completo).length;
+      const tudoFeito = nFeitos === itens.length;
+      const algoColocado = progs.some((x) => x.kg > 0);
+      const falaAuto = (await A.db.config('falaContagem')) !== false;
+      const soKg = p.n === 0; // a granel (ou menos de 1 saco): FEITO com os kg
+      const faseResto = !soKg && p.unid >= p.n && p.resto > 0 && !p.restoFeito; // sacos prontos, falta a sobra em kg
+      const um = C().unidade(ins).um.toUpperCase(); // SACO, BALDE, BAG
+      const faltamUn = p.n - p.unid;
+      const nomeUn = (q) => C().nomeUnidade(q, ins);
 
       const minis = itens.map((x, k) => {
         const insk = m.insumos[x.insumoId];
-        const feito = m.feitos.includes(k);
-        const classes = ['mini', feito ? 'feito' : 'falta', k === i ? 'agora' : ''].join(' ');
-        return `<button class="${classes}" data-item="${k}" aria-pressed="${k === i}" aria-label="${esc(insk.nome)}: ${feito ? 'feito' : 'falta'}"
+        const pk = progs[k];
+        const classes = ['mini', pk.completo ? 'feito' : 'falta', k === i ? 'agora' : ''].join(' ');
+        const texto = pk.completo ? 'pronto' : pk.n ? `${pk.unid}/${pk.n}` : `${C().numero(pk.resto)} kg`;
+        return `<button class="${classes}" data-item="${k}" aria-pressed="${k === i}" aria-label="${esc(insk.nome)}: ${pk.completo ? 'completo' : texto}"
           style="background:${insk.cor};color:${insk.corTexto}">
-          ${feito ? ic('certo', 30, 3) : ic('saco', 28, 1.8)}<span>${esc(insk.nome.split(' ')[0])}</span></button>`;
+          ${pk.completo ? ic('certo', 26, 3) : ic('saco', 22, 1.8)}<span>${esc(insk.nome.split(' ')[0])}</span><b class="prog">${pk.completo ? 'OK' : texto}</b></button>`;
       }).join('');
 
-      const grande = s.n
-        ? `<span class="qtd-num">${s.n}</span><span class="qtd-un">${C().nomeUnidade(s.n, ins).toUpperCase()}</span>${s.resto ? `<span class="qtd-mais">+ ${C().numero(s.resto)} kg</span>` : ''}`
-        : `<span class="qtd-num">${C().numero(it.kg)}</span><span class="qtd-un">KG</span>`;
+      // Número gigante: "6 / 14" + unidade; a granel, os kg
+      const contador = soKg
+        ? `<div class="contagem-sacos"><span class="feitos-num">${C().numero(p.resto)}</span></div><span class="qtd-un">KG</span>`
+        : `<div class="contagem-sacos" aria-label="${p.unid} de ${p.n} ${nomeUn(p.n)}"><span class="feitos-num">${p.unid}</span><span class="de-total">/ ${p.n}</span></div>
+           <span class="qtd-un">${nomeUn(p.n).toUpperCase()}</span>
+           ${p.resto > 0 ? `<span class="qtd-mais${p.restoFeito ? ' ok' : ''}">${p.restoFeito ? ic('certo', 24, 3) : ''} + ${C().numero(p.resto)} kg</span>` : ''}`;
+
+      let situacao;
+      if (p.completo) situacao = `<div class="selo-feito">${ic('certo', 30, 3)} COMPLETO</div>`;
+      else if (soKg) situacao = '';
+      else if (faseResto) situacao = `<div class="falta-pilula">FALTAM ${C().numero(p.resto)} kg</div>`;
+      else situacao = `<div class="falta-pilula">FALTA${faltamUn === 1 ? '' : 'M'} ${faltamUn}</div>`;
+
+      // Fileira de saquinhos (até 20); mais que isso, barra de progresso
+      let fileira = '';
+      if (p.n > 0 && p.n <= 20) {
+        fileira = `<div class="fileira-sacos" aria-hidden="true">${Array.from({ length: p.n }, (_, k) =>
+          `<span class="saquinho${k < p.unid ? ' cheio' : ''}">${ic('saco', 26, 2)}</span>`).join('')}</div>`;
+      } else if (p.n > 20) {
+        fileira = `<div class="barra barra-sacos" aria-hidden="true"><span class="verde" style="width:${Math.round((p.unid / p.n) * 100)}%"></span></div>`;
+      }
+
+      // Botões
+      let botoes;
+      if (p.completo) {
+        botoes = tudoFeito
+          ? `<button class="btn verde grande" data-acao="seguir">${ic('seguir', 48, 2.6)} SEGUIR</button>`
+          : `<button class="btn verde grande" data-acao="proximo">${ic('seguir', 48, 2.6)} PRÓXIMO</button>`;
+        botoes += soKg
+          ? `<button class="btn laranja" data-acao="menos">${ic('desfazer', 30, 2.6)} DESFAZER</button>`
+          : `<button class="btn laranja" data-acao="menos">${ic('menos', 30, 3)} −1 (CORRIGIR)</button>`;
+      } else if (soKg) {
+        botoes = `<button class="btn verde grande" data-acao="resto">${ic('certo', 56, 3)} FEITO</button>`;
+      } else if (faseResto) {
+        botoes = `
+  <div class="linha-contar">
+    <button class="btn btn-menos" data-acao="menos" aria-label="Menos um ${C().unidade(ins).um}">−1</button>
+    <button class="btn terra grande" data-acao="resto">${ic('mais', 40, 3)} ${C().numero(p.resto)} kg</button>
+  </div>`;
+      } else {
+        botoes = `
+  <div class="linha-contar">
+    <button class="btn btn-menos" data-acao="menos" aria-label="Menos um ${C().unidade(ins).um}" ${p.unid === 0 ? 'disabled' : ''}>−1</button>
+    <button class="btn terra grande" data-acao="mais">+1 ${um}</button>
+  </div>
+  <button class="btn" data-acao="todos">${ic('certo', 30, 3)} COLOQUEI TODOS</button>`;
+      }
 
       const contagem = `${nFeitos} de ${itens.length} ${nFeitos === 1 ? 'feito' : 'feitos'}`;
-      const tudoFeito = nFeitos === itens.length;
-      const fala = tudoFeito
-        ? 'Todos os insumos foram colocados. Toque em seguir. Se algum não foi colocado, toque nele e depois em desfazer.'
-        : jaFeito
-        ? `${contagem}. ${ins.nome} já foi colocado. Se não colocou, toque em desfazer. Ou toque em outro insumo lá em cima.`
-        : `${contagem}. Coloque ${C().qtdFala(it.kg, ins)} de ${ins.nome}. ${s.n ? 'São ' + C().numero(it.kg) + ' quilos. ' : ''}` +
-          `Depois toque em feito. Pode fazer na ordem que quiser: toque no insumo lá em cima.`;
+      let fala;
+      if (tudoFeito) fala = 'Todos os insumos foram colocados. Toque em seguir.';
+      else if (p.completo) fala = `${ins.nome} está completo. Toque em próximo. Se contou errado, toque em menos um.`;
+      else if (soKg) fala = `${contagem}. Coloque ${C().numero(p.resto)} quilos de ${ins.nome}. Depois toque em feito.`;
+      else if (faseResto) fala = `Os ${nomeUn(p.n)} de ${ins.nome} estão completos. Agora coloque mais ${C().numero(p.resto)} quilos e toque no botão.`;
+      else fala = `${contagem}. ${ins.nome}: coloque ${C().qtdFala(it.kg, ins)}. Já colocou ${p.unid}. Faltam ${faltamUn}. ` +
+        `A cada ${C().unidade(ins).um} colocado, toque em mais um. Pode fazer na ordem que quiser: toque no insumo lá em cima.`;
 
       return {
         fala,
         html: `
-<main class="tela">
+<main class="tela tela-passo">
   <div class="topo">${btnVoltar()}<div class="contador-passo"><span class="pilula"><b>${nFeitos}</b> de <b>${itens.length}</b> ${nFeitos === 1 ? 'feito' : 'feitos'}</span></div>${btnFalar()}</div>
   <div class="minis" role="group" aria-label="Insumos da batida (toque para escolher)" style="grid-template-columns:repeat(${itens.length}, minmax(0, 1fr))">${minis}</div>
   <div class="cartao-passo">
-    ${fotoInsumo(ins, 150)}
-    <div class="nome-insumo">${esc(ins.nome.toUpperCase())}</div>
-    <div class="quantidade${jaFeito ? ' apagada' : ''}">${grande}${s.n ? `<span class="qtd-kg">= ${C().numero(it.kg)} kg</span>` : ''}</div>
-    ${jaFeito ? `<div class="selo-feito">${ic('certo', 30, 3)} JÁ COLOCADO</div>` : ''}
+    <div class="cabeca-insumo">${fotoInsumo(ins, 84)}
+    <div class="nome-insumo">${esc(ins.nome.toUpperCase())}</div></div>
+    <div class="quantidade" aria-live="polite">${contador}</div>
+    ${situacao}
+    ${fileira}
+    <span class="qtd-kg">${C().numero(p.kg)} de ${C().numero(p.kgAlvo)} kg</span>
   </div>
   <div class="espaco"></div>
-  ${tudoFeito ? `<button class="btn verde grande" data-acao="seguir">${ic('seguir', 48, 2.6)} SEGUIR</button>` : ''}
-  ${jaFeito
-    ? `<button class="btn laranja${tudoFeito ? '' : ' grande'}" data-acao="desfazer">${ic('desfazer', tudoFeito ? 32 : 48, 2.6)} DESFAZER</button>`
-    : `<button class="btn verde grande" data-acao="feito">${ic('certo', 56, 3)} FEITO</button>`}
+  ${botoes}
+  <div class="rodape-passo">
+    ${algoColocado ? `<button class="btn" data-acao="pausar">${ic('pausa', 28, 2.6)} PAUSAR</button>` : ''}
+    <button class="btn btn-fala-auto" data-acao="fala-auto" aria-pressed="${falaAuto}" aria-label="Falar a contagem a cada toque: ${falaAuto ? 'ligado' : 'desligado'}">
+      ${ic('som', 28, 2.2)} ${falaAuto ? 'FALA: SIM' : 'FALA: NÃO'}</button>
+  </div>
 </main>`,
         ligar(r) {
-          ao(r, '[data-item]', (b) => { m.atual = Number(b.dataset.item); A.ir('passo'); });
+          const proximoQueFalta = () => itens.map((_, k) => (i + 1 + k) % itens.length).find((k) => !C().progresso(m, k).completo);
+
+          // Muda a contagem deste insumo, grava (com o estoque) e mostra/fala o resultado
+          const mudar = async (novo) => {
+            if (A.estado.gravando) return; // toque rápido demais: espera a gravação anterior
+            A.estado.gravando = true;
+            const antes = C().progresso(m, i);
+            const velho = m.colocado[i];
+            const velhaOrdem = m.ordem.slice();
+            const velhoAtual = m.atual;
+            m.colocado[i] = novo;
+            const depois = C().progresso(m, i);
+            const quando = new Date().toISOString();
+            if (!antes.completo && depois.completo) m.ordem.push({ insumoId: it.insumoId, quando });
+            if (antes.completo && !depois.completo) {
+              const pos = m.ordem.map((o) => o.insumoId).lastIndexOf(it.insumoId);
+              if (pos >= 0) m.ordem.splice(pos, 1);
+            }
+            const completou = !antes.completo && depois.completo;
+            const prox = completou ? proximoQueFalta() : undefined;
+            if (completou && prox !== undefined) m.atual = prox;
+            try {
+              await C().gravarAndamento(m, { [it.insumoId]: depois.kg - antes.kg });
+            } catch (e) {
+              console.error(e);
+              m.colocado[i] = velho;
+              m.ordem = velhaOrdem;
+              m.atual = velhoAtual;
+              A.estado.gravando = false;
+              A.mostrarAviso('Não guardou. Toque de novo.', 'laranja');
+              return;
+            }
+            A.estado.gravando = false;
+            let curta;
+            if (completou && prox === undefined) {
+              await A.ir('destino');
+              curta = `${ins.nome} completo. Tudo colocado. Para onde vai o sal?`;
+            } else if (completou) {
+              await A.ir('passo');
+              const insP = m.insumos[itens[prox].insumoId];
+              A.mostrarAviso(`${ins.nome}: completo`);
+              curta = `${ins.nome} completo. Agora ${insP.nome}: ${C().qtdFala(itens[prox].kg, insP)}.`;
+            } else {
+              await A.ir('passo');
+              if (depois.n > 0 && depois.unid >= depois.n && depois.resto > 0 && !depois.restoFeito) {
+                curta = `${depois.n} de ${depois.n}. Agora mais ${C().numero(depois.resto)} quilos.`;
+              } else if (depois.n > 0) {
+                curta = `${depois.unid} de ${depois.n}. Falta${depois.n - depois.unid === 1 ? '' : 'm'} ${depois.n - depois.unid}.`;
+              } else {
+                curta = 'Desfeito.';
+              }
+            }
+            if (falaAuto && curta) A.voz.falar(curta);
+          };
+
+          ao(r, '[data-acao=mais]', () => mudar({ unid: Math.min(p.n, p.unid + 1), resto: p.restoFeito }));
+          ao(r, '[data-acao=resto]', () => mudar({ unid: p.n, resto: true }));
+          ao(r, '[data-acao=todos]', () => mudar({ unid: p.n, resto: true }));
+          ao(r, '[data-acao=menos]', () => {
+            // −1 desfaz o último: primeiro a sobra em kg, depois um saco
+            if (p.restoFeito) mudar({ unid: p.unid, resto: false });
+            else if (p.unid > 0) mudar({ unid: p.unid - 1, resto: false });
+          });
+          ao(r, '[data-acao=proximo]', () => {
+            const prox = proximoQueFalta();
+            if (prox === undefined) return A.ir('destino');
+            m.atual = prox;
+            if (m.guardada) C().gravarAndamento(m, {}).catch(() => {});
+            A.ir('passo');
+          });
           ao(r, '[data-acao=seguir]', () => A.ir('destino'));
-          ao(r, '[data-acao=feito]', () => {
-            m.feitos.push(i);
-            m.ordem.push({ insumoId: it.insumoId, quando: new Date().toISOString() });
-            // próximo que falta, depois deste (dá a volta no fim)
-            const proximo = itens.map((_, k) => (i + 1 + k) % itens.length).find((k) => !m.feitos.includes(k));
-            if (proximo === undefined) return A.ir('destino');
-            m.atual = proximo;
+          ao(r, '[data-item]', (b) => {
+            m.atual = Number(b.dataset.item);
+            if (m.guardada) C().gravarAndamento(m, {}).catch(() => {});
             A.ir('passo');
           });
-          ao(r, '[data-acao=desfazer]', () => {
-            m.feitos = m.feitos.filter((k) => k !== i);
-            const pos = m.ordem.map((o) => o.insumoId).lastIndexOf(it.insumoId);
-            if (pos >= 0) m.ordem.splice(pos, 1);
-            A.ir('passo');
-            A.mostrarAviso(ins.nome + ': desfeito', 'laranja');
+          ao(r, '[data-acao=fala-auto]', async () => {
+            await A.db.definir('falaContagem', !falaAuto);
+            await A.ir('passo');
+            if (!falaAuto) A.voz.falar('A contagem vai ser falada a cada toque.');
+            else A.mostrarAviso('Fala da contagem desligada');
           });
-          ao(r, '[data-acao=voltar]', () => {
-            if (!m.feitos.length) { A.estado.mistura = null; A.ir('escolher'); } else A.ir('sairMistura');
+          ao(r, '[data-acao=pausar]', async () => {
+            await C().gravarAndamento(m, {});
+            A.estado.mistura = null;
+            await A.ir('inicio');
+            A.mostrarAviso('Mistura guardada. Continue quando quiser.');
+            A.voz.falar('Mistura guardada. Para continuar, toque no botão amarelo.');
+          });
+          ao(r, '[data-acao=voltar]', async () => {
+            if (!algoColocado) {
+              // nada colocado ainda: sai sem registrar nada
+              if (m.guardada) await C().apagarAndamento();
+              A.estado.mistura = null;
+              A.ir('escolher');
+            } else A.ir('sairMistura');
           });
         },
       };
     },
 
-    // SAIR NO MEIO DA MISTURA? (confirmação)
+    // SAIR NO MEIO DA MISTURA: já tem saco colocado, então a mistura não some — fica guardada (pausada)
     async sairMistura() {
       const m = A.estado.mistura;
-      const n = m.feitos.length;
+      const kg = C().totalColocadoKg(m);
       return {
-        fala: `Sair da mistura? Você já colocou ${n} ${n === 1 ? 'insumo' : 'insumos'}. Se sair, esta mistura não fica registrada. Para continuar, toque no botão verde.`,
+        fala: `Você já colocou ${C().numero(kg)} quilos nesta mistura. Para continuar, toque no botão verde. Para parar agora e continuar depois, toque em pausar.`,
         html: `
 <main class="tela centro">
   <div class="topo"><span class="vago"></span><span class="espaco"></span>${btnFalar()}</div>
   <div class="circulo-alerta laranja">${ic('atencao', 72, 2.2)}</div>
-  <h1 class="titulo-falta laranja">SAIR DA MISTURA?</h1>
-  <p class="instrucao">Já colocou ${n} de ${m.formula.itens.length}. Se sair, esta mistura <b>não fica registrada</b>.</p>
+  <h1 class="titulo-falta laranja">PARAR A MISTURA?</h1>
+  <p class="instrucao">Já colocou <b>${C().numero(kg)} kg</b>. A mistura fica guardada e aparece no Início para continuar.</p>
   <div class="espaco"></div>
   <button class="btn verde grande" data-acao="continuar">${ic('seguir', 44, 2.6)} CONTINUAR</button>
-  <button class="btn" data-acao="sair">${ic('voltar', 30, 2.6)} SAIR SEM REGISTRAR</button>
+  <button class="btn" data-acao="pausar">${ic('pausa', 30, 2.6)} PAUSAR E SAIR</button>
 </main>`,
         ligar(r) {
           ao(r, '[data-acao=continuar]', () => A.ir('passo'));
-          ao(r, '[data-acao=sair]', () => { A.estado.mistura = null; A.ir('escolher'); });
+          ao(r, '[data-acao=pausar]', async () => {
+            await C().gravarAndamento(m, {});
+            A.estado.mistura = null;
+            await A.ir('inicio');
+            A.mostrarAviso('Mistura guardada. Continue quando quiser.');
+          });
         },
       };
     },
@@ -509,14 +679,10 @@ window.App = window.App || {};
             salvando = true;
             r.querySelectorAll('button').forEach((b) => { b.disabled = true; });
             const m = A.estado.mistura;
-            const reg = C().montarMistura({
-              formula: m.formula, insumosPorId: m.insumos, destino, pessoa: A.estado.pessoa,
-              inicio: m.inicio, fim: new Date().toISOString(),
-            });
-            reg.avisoFalta = m.avisoFalta;
-            reg.ordem = m.ordem; // em que ordem o operador colocou os insumos
+            let reg;
             try {
-              await C().salvarMistura(reg);
+              // grava o que foi colocado de fato (o estoque já baixou saco por saco) e apaga o andamento
+              reg = await C().concluirMistura(m, { destino, pessoa: A.estado.pessoa });
             } catch (e) {
               salvando = false;
               r.querySelectorAll('button').forEach((b) => { b.disabled = false; });
@@ -528,7 +694,7 @@ window.App = window.App || {};
           };
           ao(r, '[data-acao=voltar]', () => {
             const m = A.estado.mistura;
-            m.atual = m.formula.itens.length - 1; // volta mostrando o último insumo (com DESFAZER)
+            m.atual = m.formula.itens.length - 1; // volta mostrando o último insumo (com −1 para corrigir)
             A.ir('passo');
           });
           ao(r, '[data-pasto]', (b) => {
@@ -584,18 +750,46 @@ window.App = window.App || {};
       const exemplos = misturas.filter((m) => m.exemplo).length;
       const feitas = misturas.length - exemplos;
       const etq = (x) => (x.exemplo ? ' <span class="etiqueta">exemplo</span>' : '');
+      const incompleta = (m) => (m.status === 'incompleta'
+        ? ` <span class="etiqueta laranja">${ic('atencao', 16)} incompleta: ${C().numero(m.totalKg)} de ${C().numero(m.totalFormulaKg)} kg${m.encerradaPeloDono ? ', encerrada pelo dono' : ''}</span>`
+        : '');
+
+      // Mistura em andamento (pausada ou interrompida)
+      const andamento = await C().carregarAndamento();
+      let blocoAndamento = '';
+      if (andamento) {
+        const linhas = andamento.formula.itens.map((it, k) => {
+          const pk = C().progresso(andamento, k);
+          const ins = andamento.insumos[it.insumoId] || { nome: '(insumo apagado)' };
+          const quanto = pk.n ? `${pk.unid} de ${pk.n} ${C().nomeUnidade(pk.n, ins)}${pk.resto > 0 ? ` + ${C().numero(pk.resto)} kg${pk.restoFeito ? ' (feito)' : ''}` : ''}` : `${C().numero(pk.resto)} kg${pk.restoFeito ? ' (feito)' : ''}`;
+          return `<li>${pk.completo ? ic('certo', 18, 3) : ic('menos', 18, 3)} <b>${esc(ins.nome)}</b>: ${esc(quanto)} · ${C().numero(pk.kg)} de ${C().numero(pk.kgAlvo)} kg</li>`;
+        }).join('');
+        blocoAndamento = `
+  <section class="secao em-andamento">
+    <h2>${ic('atencao', 26)} Mistura em andamento</h2>
+    <p><b>${esc(andamento.formula.nome)}</b> · ${esc(andamento.pessoaNome || '—')} · começou ${esc(C().quando(andamento.inicio))}${andamento.atualizadaEm ? ` · último toque ${esc(C().quando(andamento.atualizadaEm))}` : ''}</p>
+    <ul class="lista">${linhas}</ul>
+    <p>Colocado até agora: <b>${C().numero(C().totalColocadoKg(andamento))} kg</b> (já saiu do estoque).</p>
+    <p class="ajuda">Se ela foi abandonada, encerre: fica registrado só o que foi colocado de verdade, sem destino.</p>
+    <button class="btn vermelho" data-acao="encerrar">${ic('problema', 28)} ENCERRAR MISTURA</button>
+  </section>`;
+      }
+
       return {
-        fala: 'Registros. Aqui aparece o que ficou guardado neste celular.',
+        fala: andamento
+          ? 'Registros. Tem uma mistura em andamento, logo no começo da tela.'
+          : 'Registros. Aqui aparece o que ficou guardado neste celular.',
         html: `
 <main class="tela">
   <div class="topo">${btnVoltar()}<h1 class="titulo">REGISTROS</h1>${btnFalar()}</div>
+  ${blocoAndamento}
   ${entradas.some((e) => e.pesoDiferente) ? `<p class="aviso-dono">${ic('atencao', 24)} <span><b>${entradas.filter((e) => e.pesoDiferente).length} ${entradas.filter((e) => e.pesoDiferente).length === 1 ? 'chegada' : 'chegadas'} com saco de peso diferente do cadastro</b> (veja em Chegadas). O cadastro não foi mudado: se o peso mudou de vez, corrija em Insumos.</span></p>` : ''}
   <section class="secao">
     <h2>Misturas: ${misturas.length}</h2>
     <p>${feitas} ${feitas === 1 ? 'feita' : 'feitas'} no app · ${exemplos} de exemplo</p>
     <ul class="lista">
       ${misturas.slice(0, 10).map((m) => `<li><b>${esc(C().quando(m.fim))}</b> · ${esc(m.formulaNome)} · ${C().numero(m.totalKg)} kg<br>
-        ${esc(textoDestino(m.destino))} · ${esc(m.pessoaNome || '—')}${m.avisoFalta ? ' · <span class="etiqueta">feita com aviso de falta</span>' : ''}${etq(m)}</li>`).join('') || '<li>Nenhuma.</li>'}
+        ${esc(textoDestino(m.destino))} · ${esc(m.pessoaNome || '—')}${m.avisoFalta ? ' · <span class="etiqueta">feita com aviso de falta</span>' : ''}${incompleta(m)}${etq(m)}</li>`).join('') || '<li>Nenhuma.</li>'}
     </ul>
   </section>
   <section class="secao">
@@ -629,6 +823,26 @@ window.App = window.App || {};
 </main>`,
         ligar(r) {
           ao(r, '[data-acao=voltar]', () => A.ir('dono'));
+          ao(r, '[data-acao=encerrar]', async (b) => {
+            const kg = C().totalColocadoKg(andamento);
+            const pergunta = kg > 0
+              ? `Encerrar a mistura de ${andamento.formula.nome}? Fica registrado só o que foi colocado (${C().numero(kg)} kg). O operador não vai mais poder continuar.`
+              : `Encerrar a mistura de ${andamento.formula.nome}? Nada foi colocado, então ela só some.`;
+            if (!confirm(pergunta)) return;
+            b.disabled = true;
+            try {
+              if (kg > 0) await C().concluirMistura(andamento, { destino: { tipo: 'nenhum', nome: 'Sem destino' }, encerrada: true });
+              else await C().apagarAndamento();
+            } catch (e) {
+              console.error(e);
+              b.disabled = false;
+              A.mostrarAviso('Não deu para encerrar. Tente de novo.', 'laranja');
+              return;
+            }
+            A.estado.mistura = null;
+            await A.ir('registros');
+            A.mostrarAviso(kg > 0 ? 'Mistura encerrada e registrada' : 'Mistura apagada');
+          });
           // O áudio fica guardado como arquivo no celular; liga cada player ao seu arquivo
           r.querySelectorAll('[data-audio]').forEach((el) => {
             const p = problemas.find((x) => x.id === el.dataset.audio);
