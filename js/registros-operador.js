@@ -162,4 +162,242 @@ window.App = window.App || {};
       };
     },
   });
+
+  // ---------- PROBLEMA ----------
+
+  const TIPOS = [
+    { id: 'saco-rasgado', nome: 'SACO RASGADO', icone: 'rasgado', fala: 'saco rasgado', pedeInsumo: true },
+    { id: 'molhado', nome: 'MOLHADO', icone: 'gota', fala: 'molhado', pedeInsumo: true },
+    { id: 'maquina-parada', nome: 'MÁQUINA PARADA', icone: 'maquina', fala: 'máquina parada', pedeInsumo: false },
+    { id: 'faltou-insumo', nome: 'FALTOU INSUMO', icone: 'vazio', fala: 'faltou insumo', pedeInsumo: true },
+  ];
+  const tipoPorId = (id) => TIPOS.find((t) => t.id === id);
+  const GRAVACAO_MAX = 60; // segundos
+
+  function minutos(seg) {
+    return Math.floor(seg / 60) + ':' + String(Math.floor(seg % 60)).padStart(2, '0');
+  }
+
+  Object.assign(A.telas, {
+    // PROBLEMA: qual?
+    async problema() {
+      return {
+        fala: 'Qual é o problema? ' + TIPOS.map((t) => t.fala + '.').join(' '),
+        html: `
+<main class="tela">
+  <div class="topo">${U().btnVoltar()}<h1 class="titulo">QUAL PROBLEMA?</h1>${U().btnFalar()}</div>
+  <div class="grade-problemas">
+    ${TIPOS.map((t) => `
+    <button class="cartao-problema" data-tipo="${t.id}">${ic(t.icone, 76, 1.8)}<span>${t.nome}</span></button>`).join('')}
+  </div>
+</main>`,
+        ligar(r) {
+          U().ao(r, '[data-acao=voltar]', () => A.ir('inicio'));
+          U().ao(r, '[data-tipo]', (b) => {
+            const t = tipoPorId(b.dataset.tipo);
+            A.ir(t.pedeInsumo ? 'problemaInsumo' : 'problemaDetalhe', { tipo: t.id });
+          });
+        },
+      };
+    },
+
+    // PROBLEMA: com qual insumo?
+    async problemaInsumo({ tipo }) {
+      const t = tipoPorId(tipo);
+      const insumos = await insumosOrdenados();
+      return {
+        fala: `${t.fala}. Qual insumo? Toque na foto. ` + insumos.map((i) => i.nome + '.').join(' '),
+        html: `
+<main class="tela">
+  <div class="topo">${U().btnVoltar()}<h1 class="titulo">QUAL INSUMO?</h1>${U().btnFalar()}</div>
+  <div class="selo-problema">${ic(t.icone, 36, 2)} ${t.nome}</div>
+  ${cartoesInsumo(insumos)}
+</main>`,
+        ligar(r) {
+          U().ao(r, '[data-acao=voltar]', () => A.ir('problema'));
+          U().ao(r, '[data-insumo]', (b) => A.ir('problemaDetalhe', { tipo, insumoId: b.dataset.insumo }));
+        },
+      };
+    },
+
+    // PROBLEMA: falar e foto (os dois opcionais) e guardar
+    async problemaDetalhe({ tipo, insumoId }) {
+      const t = tipoPorId(tipo);
+      const ins = insumoId ? await A.db.pegar('insumos', insumoId) : null;
+      const e = { audio: null, segundos: 0, foto: null };
+      let gravador = null;
+      let microfone = null;
+      let relogio = null;
+      let urlAudio = null;
+      return {
+        fala: 'Se quiser, toque em falar e conte o que aconteceu, ou tire uma foto. Depois toque em guardar aviso.',
+        html: `
+<main class="tela">
+  <div class="topo">${U().btnVoltar()}<h1 class="titulo">CONTE MAIS</h1>${U().btnFalar()}</div>
+  <div class="selo-problema">${ic(t.icone, 36, 2)} ${t.nome}${ins ? ' · ' + esc(ins.nome.toUpperCase()) : ''}</div>
+  <div id="bloco-audio"></div>
+  <div id="bloco-foto"></div>
+  <input type="file" accept="image/*" capture="environment" id="arquivo-foto" hidden>
+  <p class="ajuda centro">Falar e foto não são obrigatórios.</p>
+  <div class="espaco"></div>
+  <button class="btn verde grande" data-acao="guardar" style="font-size:30px">${ic('certo', 44, 3)} GUARDAR AVISO</button>
+</main>`,
+        ligar(r) {
+          const blocoAudio = r.querySelector('#bloco-audio');
+          const blocoFoto = r.querySelector('#bloco-foto');
+          const arquivo = r.querySelector('#arquivo-foto');
+
+          const pararMicrofone = () => {
+            clearInterval(relogio);
+            if (microfone) microfone.getTracks().forEach((tr) => tr.stop());
+            microfone = null;
+          };
+
+          const desenharAudio = () => {
+            if (gravador && gravador.state === 'recording') {
+              blocoAudio.innerHTML = `
+    <button class="btn vermelho grande gravando" data-acao="parar">${ic('parar', 44, 2.4)} PARAR <span class="relogio">${minutos(e.segundos)}</span></button>`;
+            } else if (e.audio) {
+              if (urlAudio) URL.revokeObjectURL(urlAudio);
+              urlAudio = URL.createObjectURL(e.audio);
+              blocoAudio.innerHTML = `
+    <div class="linha-anexo">
+      <button class="btn" data-acao="ouvir">${ic('tocar', 34, 2.4)} OUVIR ${minutos(e.segundos)}</button>
+      <button class="btn-redondo" data-acao="apagar-audio" aria-label="Apagar a gravação">${ic('lixo', 30, 2.2)}</button>
+    </div>
+    <audio id="player" src="${urlAudio}" preload="auto"></audio>`;
+            } else {
+              blocoAudio.innerHTML = `
+    <button class="btn grande" data-acao="falar">${ic('microfone', 48, 2)} FALAR</button>`;
+            }
+          };
+
+          const desenharFoto = () => {
+            blocoFoto.innerHTML = e.foto
+              ? `<div class="linha-anexo">
+      <img class="foto-anexo" src="${e.foto}" alt="Foto do problema">
+      <button class="btn-redondo" data-acao="apagar-foto" aria-label="Apagar a foto">${ic('lixo', 30, 2.2)}</button>
+    </div>`
+              : `<button class="btn grande" data-acao="foto">${ic('camera', 48, 1.8)} FOTO</button>`;
+          };
+
+          const comecarGravacao = async () => {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+              A.mostrarAviso('Este aparelho não deixa gravar aqui', 'laranja');
+              return;
+            }
+            A.voz.parar();
+            try {
+              microfone = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (err) {
+              A.mostrarAviso('Sem permissão para usar o microfone', 'laranja');
+              A.voz.falar('O celular não deixou usar o microfone.');
+              return;
+            }
+            const pedacos = [];
+            gravador = new MediaRecorder(microfone);
+            gravador.ondataavailable = (ev) => { if (ev.data && ev.data.size) pedacos.push(ev.data); };
+            gravador.onstop = () => {
+              pararMicrofone();
+              e.audio = pedacos.length ? new Blob(pedacos, { type: gravador.mimeType || 'audio/webm' }) : null;
+              desenharAudio();
+            };
+            e.segundos = 0;
+            gravador.start();
+            relogio = setInterval(() => {
+              e.segundos++;
+              const rel = blocoAudio.querySelector('.relogio');
+              if (rel) rel.textContent = minutos(e.segundos);
+              if (e.segundos >= GRAVACAO_MAX) gravador.stop();
+            }, 1000);
+            desenharAudio();
+          };
+
+          // Um só "ouvinte" para os botões que mudam (falar, parar, ouvir, apagar, foto)
+          r.addEventListener('click', async (ev) => {
+            const b = ev.target.closest('[data-acao]');
+            if (!b) return;
+            const acao = b.dataset.acao;
+            if (acao === 'falar') comecarGravacao();
+            if (acao === 'parar' && gravador && gravador.state === 'recording') gravador.stop();
+            if (acao === 'ouvir') { A.voz.parar(); r.querySelector('#player').play(); }
+            if (acao === 'apagar-audio') { e.audio = null; e.segundos = 0; desenharAudio(); }
+            if (acao === 'foto') arquivo.click();
+            if (acao === 'apagar-foto') { e.foto = null; desenharFoto(); }
+          });
+
+          arquivo.addEventListener('change', async () => {
+            const f = arquivo.files && arquivo.files[0];
+            if (!f) return;
+            try {
+              e.foto = await U().reduzirFoto(f, 720);
+              desenharFoto();
+            } catch (err) {
+              A.mostrarAviso('Não deu para usar essa foto', 'laranja');
+            }
+            arquivo.value = '';
+          });
+
+          desenharAudio();
+          desenharFoto();
+
+          U().ao(r, '[data-acao=voltar]', () => {
+            if (gravador && gravador.state === 'recording') { gravador.onstop = null; gravador.stop(); }
+            pararMicrofone();
+            A.ir(t.pedeInsumo ? 'problemaInsumo' : 'problema', { tipo });
+          });
+
+          U().ao(r, '[data-acao=guardar]', async (b) => {
+            if (gravador && gravador.state === 'recording') {
+              // terminou de falar sem tocar em PARAR: termina a gravação e guarda junto
+              await new Promise((ok) => { const antes = gravador.onstop; gravador.onstop = () => { antes(); ok(); }; gravador.stop(); });
+            }
+            b.disabled = true;
+            const p = A.estado.pessoa;
+            const registro = {
+              id: A.db.novoId('problema'), tipo, quando: new Date().toISOString(),
+              insumoId: ins ? ins.id : null, insumoNome: ins ? ins.nome : null,
+              audio: e.audio, audioSegundos: e.audio ? e.segundos : 0, foto: e.foto,
+              pessoaId: p.id, pessoaNome: p.nome, exemplo: false,
+            };
+            try {
+              await A.db.salvar('problemas', registro);
+            } catch (err) {
+              b.disabled = false;
+              A.mostrarAviso('Não guardou. Tente de novo.', 'laranja');
+              return;
+            }
+            if (urlAudio) URL.revokeObjectURL(urlAudio);
+            A.ir('problemaPronto', { problema: registro });
+          });
+        },
+      };
+    },
+
+    // PROBLEMA: guardado (tela verde)
+    async problemaPronto({ problema }) {
+      const t = tipoPorId(problema.tipo);
+      const p = A.estado.pessoa;
+      const anexos = [problema.audio ? 'gravação' : null, problema.foto ? 'foto' : null].filter(Boolean);
+      return {
+        tom: 'verde',
+        fala: `Aviso guardado. ${t.fala[0].toUpperCase() + t.fala.slice(1)}${problema.insumoNome ? ', ' + problema.insumoNome : ''}. O dono vai ver na área do dono. Obrigado, ${p.nome}.`,
+        html: `
+<main class="tela verde">
+  <div class="topo"><span class="vago"></span><span class="espaco"></span>${U().btnFalar()}</div>
+  <div class="circulo-ok">${ic('certo', 100, 3)}</div>
+  <h1 class="titulo-pronta">AVISO GUARDADO</h1>
+  <div class="bloco-verde linha-info">${ic(t.icone, 44, 2)}<div><small>Problema</small><b>${t.nome}${problema.insumoNome ? ' · ' + esc(problema.insumoNome) : ''}</b></div></div>
+  ${anexos.length ? `<div class="bloco-verde linha-info">${ic(problema.audio ? 'microfone' : 'camera', 40, 2)}<div><small>Junto do aviso</small><b>${anexos.join(' e ')}</b></div></div>` : ''}
+  <div class="bloco-verde linha-info">${U().avatar(p, 48)}<div><small>Quem avisou · quando</small><b>${esc(p.nome)} · ${esc(C().quando(problema.quando))}</b></div></div>
+  <p class="nota-verde">Fica guardado neste celular. O dono vê em Área do dono → Registros.</p>
+  <div class="espaco"></div>
+  <button class="btn branco-no-verde" data-acao="inicio">${ic('casa', 44, 2.4)} INÍCIO</button>
+</main>`,
+        ligar(r) {
+          U().ao(r, '[data-acao=inicio]', () => A.ir('inicio'));
+        },
+      };
+    },
+  });
 })();

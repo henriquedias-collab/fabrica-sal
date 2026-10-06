@@ -243,7 +243,7 @@ window.App = window.App || {};
       }).join(' ');
 
       return {
-        fala: `${saudacao}, ${p.nome}. Para fazer uma mistura, toque no botão verde. Se chegou insumo, toque no caminhão. ${falaAlertas}`,
+        fala: `${saudacao}, ${p.nome}. Para fazer uma mistura, toque no botão verde. Se chegou insumo, toque no caminhão. Se deu problema, toque no botão vermelho. ${falaAlertas}`,
         html: `
 <main class="tela">
   <div class="topo">
@@ -253,13 +253,14 @@ window.App = window.App || {};
   </div>
   <button class="btn-principal" data-acao="misturar">${ic('misturar', 110, 1.6)}<span>FAZER MISTURA</span></button>
   <button class="btn-linha" data-acao="chegada">${ic('caminhao', 56, 1.8)}<span>CHEGOU INSUMO</span></button>
-  <button class="btn-linha vermelho em-breve" data-acao="em-breve">${ic('problema', 56)}<span>PROBLEMA<small>em breve</small></span></button>
+  <button class="btn-linha vermelho" data-acao="problema">${ic('problema', 56)}<span>PROBLEMA</span></button>
   ${alertas.map(cartaoAlerta).join('')}
 </main>`,
         ligar(r) {
           ao(r, '[data-acao=trocar]', () => A.ir('quem'));
           ao(r, '[data-acao=misturar]', () => A.ir('escolher'));
           ao(r, '[data-acao=chegada]', () => A.ir('chegada'));
+          ao(r, '[data-acao=problema]', () => A.ir('problema'));
           ao(r, '[data-acao=em-breve]', () => {
             A.mostrarAviso('Esta parte ainda vai ser feita', 'laranja');
             A.voz.falar('Esta parte ainda vai ser feita.');
