@@ -10,9 +10,19 @@ window.App = window.App || {};
     fala: '', // texto que o alto-falante lê na tela atual
   };
 
+  // Telas da Área do dono: só abrem depois da senha. Ao voltar para as telas do operador, trava de novo.
+  const TELAS_DONO = ['dono', 'registros', 'insumos', 'insumo', 'formulas', 'formula', 'pastos', 'pasto', 'pessoas', 'exemplos', 'trocarSenha'];
+
   // Mostra uma tela
   A.ir = async function (nome, params) {
     A.voz.parar();
+    const doDono = TELAS_DONO.includes(nome) || !!(params && params.dono);
+    if (doDono && !A.estado.donoLiberado) {
+      params = { destino: nome, params: params || {} };
+      nome = 'senha';
+    } else if (!doDono && nome !== 'senha') {
+      A.estado.donoLiberado = false;
+    }
     if (['inicio', 'escolher', 'aviso', 'passo', 'destino', 'pronta'].includes(nome) && !A.estado.pessoa) nome = 'quem';
     if (['aviso', 'passo', 'destino'].includes(nome) && !A.estado.mistura) nome = 'inicio';
     const tela = await A.telas[nome](params || {});

@@ -11,28 +11,50 @@ window.App = window.App || {};
     return Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
   }
 
-  // 100 kg em sacos de 30 kg -> { sacos: 3, resto: 10 }
-  function sacos(kg, kgPorSaco) {
-    if (!kgPorSaco) return { sacos: 0, resto: kg };
-    const s = Math.floor(kg / kgPorSaco + 1e-9);
-    const resto = Math.round((kg - s * kgPorSaco) * 10) / 10;
-    return { sacos: s, resto };
+  // Unidades em que o insumo chega. "kg" = a granel (conta direto em quilos).
+  const UNIDADES = {
+    saco: { um: 'saco', varios: 'sacos' },
+    balde: { um: 'balde', varios: 'baldes' },
+    bag: { um: 'bag', varios: 'bags' },
+    kg: { um: 'kg', varios: 'kg', granel: true },
+  };
+
+  function unidade(ins) {
+    const u = UNIDADES[(ins && ins.unidade) || 'saco'] || UNIDADES.saco;
+    const kgPor = u.granel ? 0 : (ins && ins.kgPorSaco) || 0;
+    return Object.assign({ kgPor }, u);
   }
 
-  function sacosTexto(kg, kgPorSaco) {
-    const q = sacos(kg, kgPorSaco);
+  // "saco" ou "sacos", conforme a quantidade
+  function nomeUnidade(n, ins) {
+    const u = unidade(ins);
+    return n === 1 ? u.um : u.varios;
+  }
+
+  // 100 kg em sacos de 30 kg -> { n: 3, resto: 10 }. A granel -> { n: 0, resto: 100 }
+  function qtd(kg, ins) {
+    const { kgPor } = unidade(ins);
+    if (!kgPor) return { n: 0, resto: Math.round(kg * 10) / 10 };
+    const n = Math.floor(kg / kgPor + 1e-9);
+    const resto = Math.round((kg - n * kgPor) * 10) / 10;
+    return { n, resto };
+  }
+
+  // "3 sacos + 10 kg"
+  function qtdTexto(kg, ins) {
+    const q = qtd(kg, ins);
     const partes = [];
-    if (q.sacos) partes.push(q.sacos + (q.sacos === 1 ? ' saco' : ' sacos'));
-    if (q.resto || !q.sacos) partes.push(numero(q.resto) + ' kg');
+    if (q.n) partes.push(q.n + ' ' + nomeUnidade(q.n, ins));
+    if (q.resto || !q.n) partes.push(numero(q.resto) + ' kg');
     return partes.join(' + ');
   }
 
   // Para a voz: "3 sacos e mais 10 quilos"
-  function sacosFala(kg, kgPorSaco) {
-    const q = sacos(kg, kgPorSaco);
+  function qtdFala(kg, ins) {
+    const q = qtd(kg, ins);
     const partes = [];
-    if (q.sacos) partes.push(q.sacos + (q.sacos === 1 ? ' saco' : ' sacos'));
-    if (q.resto || !q.sacos) partes.push(numero(q.resto) + ' quilos');
+    if (q.n) partes.push(q.n + ' ' + nomeUnidade(q.n, ins));
+    if (q.resto || !q.n) partes.push(numero(q.resto) + ' quilos');
     return partes.join(' e mais ');
   }
 
@@ -144,7 +166,7 @@ window.App = window.App || {};
   }
 
   App.calc = {
-    DIA, numero, sacos, sacosTexto, sacosFala, consumoDiario, alertasEstoque, faltas,
+    DIA, UNIDADES, numero, unidade, nomeUnidade, qtd, qtdTexto, qtdFala, consumoDiario, alertasEstoque, faltas,
     montarMistura, salvarMistura, iniciais, quando,
   };
 })();

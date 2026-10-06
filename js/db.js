@@ -4,8 +4,8 @@ window.App = window.App || {};
 
 (function () {
   const NOME = 'fabrica-sal';
-  const VERSAO = 1;
-  const LOJAS = ['pessoas', 'insumos', 'formulas', 'pastos', 'misturas', 'problemas'];
+  const VERSAO = 2; // 2: entradas (chegada de insumo) e contagens (correção de estoque)
+  const LOJAS = ['pessoas', 'insumos', 'formulas', 'pastos', 'misturas', 'problemas', 'entradas', 'contagens'];
   let banco = null;
 
   function pedido(r) {
@@ -32,7 +32,13 @@ window.App = window.App || {};
           });
           if (!d.objectStoreNames.contains('config')) d.createObjectStore('config', { keyPath: 'chave' });
         };
-        r.onsuccess = () => { banco = r.result; ok(banco); };
+        r.onsuccess = () => {
+          banco = r.result;
+          // Se uma versão nova do app (aberta em outra aba) precisar atualizar o banco, libera
+          banco.onversionchange = () => { banco.close(); location.reload(); };
+          ok(banco);
+        };
+        r.onblocked = () => console.warn('Banco esperando outra aba do app fechar');
         r.onerror = () => erro(r.error);
       });
     },

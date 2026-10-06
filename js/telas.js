@@ -112,31 +112,42 @@ window.App = window.App || {};
       };
     },
 
-    // CADASTRO DE PESSOA
-    async novaPessoa() {
+    // CADASTRO DE PESSOA (nova ou, vindo da Área do dono, editar: { id, volta })
+    async novaPessoa({ id, volta }) {
       const cores = ['#1d6b3a', '#1f4fa0', '#a65300', '#5b3a8a', '#0f6b6b', '#8c2257'];
-      const escolha = { cor: cores[0], funcao: 'operador', foto: null };
+      const atual = id ? await A.db.pegar('pessoas', id) : null;
+      const escolha = atual
+        ? { cor: atual.cor, funcao: atual.funcao || 'operador', foto: atual.foto || null }
+        : { cor: cores[0], funcao: 'operador', foto: null };
+      const corOk = cores.includes(escolha.cor) ? escolha.cor : cores[0];
+      escolha.cor = corOk;
+      const destinoVolta = volta || 'quem';
       return {
-        fala: 'Cadastro de pessoa. Tire a foto, escreva o nome, escolha a cor e toque em salvar.',
+        fala: atual
+          ? 'Editar pessoa. Mude o que precisar e toque em salvar.'
+          : 'Cadastro de pessoa. Tire a foto, escreva o nome, escolha a cor e toque em salvar.',
         html: `
 <main class="tela">
-  <div class="topo">${btnVoltar()}<h1 class="titulo">NOVA PESSOA</h1>${btnFalar()}</div>
-  <button class="foto-pessoa" data-acao="foto" aria-label="Tirar foto">${ic('camera', 56, 1.8)}<span>TIRAR FOTO</span></button>
+  <div class="topo">${btnVoltar()}<h1 class="titulo">${atual ? 'EDITAR PESSOA' : 'NOVA PESSOA'}</h1>${btnFalar()}</div>
+  <button class="foto-pessoa${escolha.foto ? ' com-foto' : ''}" data-acao="foto" aria-label="Tirar foto">${escolha.foto
+    ? `<img src="${escolha.foto}" alt="Foto atual">`
+    : `${ic('camera', 56, 1.8)}<span>TIRAR FOTO</span>`}</button>
   <input type="file" accept="image/*" capture="user" id="arquivo-foto" hidden>
   <label class="rotulo" for="nome-pessoa">Nome</label>
-  <input id="nome-pessoa" class="campo" type="text" autocomplete="off" autocapitalize="words" maxlength="30" placeholder="Ex.: João">
+  <input id="nome-pessoa" class="campo" type="text" autocomplete="off" autocapitalize="words" maxlength="30" placeholder="Ex.: João" value="${esc(atual ? atual.nome : '')}">
   <div class="rotulo">Função</div>
   <div class="grade-2">
-    <button class="opcao" data-funcao="operador" aria-pressed="true">${ic('pessoa', 28)} OPERADOR</button>
-    <button class="opcao" data-funcao="dono" aria-pressed="false">${ic('chave', 28)} DONO</button>
+    <button class="opcao" data-funcao="operador" aria-pressed="${escolha.funcao !== 'dono'}">${ic('pessoa', 28)} OPERADOR</button>
+    <button class="opcao" data-funcao="dono" aria-pressed="${escolha.funcao === 'dono'}">${ic('chave', 28)} DONO</button>
   </div>
   <div class="rotulo">Cor</div>
   <div class="cores">
-    ${cores.map((c, k) => `<button class="cor" data-cor="${c}" style="background:${c}" aria-label="Cor ${k + 1}" aria-pressed="${k === 0}">${ic('certo', 26, 3)}</button>`).join('')}
+    ${cores.map((c, k) => `<button class="cor" data-cor="${c}" style="background:${c}" aria-label="Cor ${k + 1}" aria-pressed="${c === escolha.cor}">${ic('certo', 26, 3)}</button>`).join('')}
   </div>
   <p class="erro" role="alert" hidden>${ic('atencao', 28)} <span>Escreva o nome.</span></p>
   <div class="espaco"></div>
   <button class="btn verde grande" data-acao="salvar">${ic('certo', 44, 3)} SALVAR</button>
+  ${atual ? `<button class="btn" data-acao="remover">${ic('problema', 28)} Tirar da lista "Quem é você?"</button>` : ''}
 </main>`,
         ligar(r) {
           const arquivo = r.querySelector('#arquivo-foto');
@@ -144,7 +155,17 @@ window.App = window.App || {};
           const campo = r.querySelector('#nome-pessoa');
           const erro = r.querySelector('.erro');
 
-          ao(r, '[data-acao=voltar]', () => A.ir('quem'));
+          ao(r, '[data-acao=voltar]', () => A.ir(destinoVolta));
+          ao(r, '[data-acao=remover]', async () => {
+            if (!confirm(`Tirar ${atual.nome} da lista? As misturas já feitas por ${atual.nome} continuam no histórico.`)) return;
+            await A.db.salvar('pessoas', Object.assign({}, atual, { ativo: false }));
+            if (A.estado.pessoa && A.estado.pessoa.id === atual.id) {
+              A.estado.pessoa = null;
+              await A.db.apagar('config', 'pessoaAtual');
+            }
+            await A.ir(destinoVolta);
+            A.mostrarAviso(atual.nome + ' saiu da lista');
+          });
           btnFoto.addEventListener('click', () => arquivo.click());
           arquivo.addEventListener('change', async () => {
             const f = arquivo.files && arquivo.files[0];
@@ -174,13 +195,14 @@ window.App = window.App || {};
               return;
             }
             b.disabled = true;
-            const pessoa = {
-              id: A.db.novoId('pessoa'), nome, funcao: escolha.funcao, cor: escolha.cor, foto: escolha.foto,
-              ativo: true, exemplo: false, criadoEm: new Date().toISOString(),
-            };
+            const pessoa = Object.assign(
+              atual || { id: A.db.novoId('pessoa'), ativo: true, exemplo: false, criadoEm: new Date().toISOString() },
+              { nome, funcao: escolha.funcao, cor: escolha.cor, foto: escolha.foto, exemplo: false },
+            );
             await A.db.salvar('pessoas', pessoa);
-            await A.ir('quem');
-            A.mostrarAviso(nome + ' cadastrado');
+            if (A.estado.pessoa && A.estado.pessoa.id === pessoa.id) A.estado.pessoa = pessoa;
+            await A.ir(destinoVolta);
+            A.mostrarAviso(nome + (atual ? ' atualizado' : ' cadastrado'));
           });
         },
       };
@@ -202,7 +224,7 @@ window.App = window.App || {};
         return `
   <div class="alerta ${a.nivel}">
     ${ic(a.nivel === 'vermelho' ? 'problema' : 'atencao', 48)}
-    <div><b>${esc(titulo)}</b><span>Restam ${esc(C().sacosTexto(a.insumo.estoqueKg, a.insumo.kgPorSaco))}</span></div>
+    <div><b>${esc(titulo)}</b><span>Restam ${esc(C().qtdTexto(a.insumo.estoqueKg, a.insumo))}</span></div>
   </div>`;
       };
       const falaAlertas = alertas.map((a) => {
@@ -238,9 +260,12 @@ window.App = window.App || {};
 
     // ESCOLHER O SAL
     async escolher() {
-      const [formulas, insumos] = await Promise.all([A.db.todos('formulas'), A.db.todos('insumos')]);
-      formulas.sort((a, b) => (a.numero || 0) - (b.numero || 0));
+      const [todasFormulas, insumos] = await Promise.all([A.db.todos('formulas'), A.db.todos('insumos')]);
       const mapa = porId(insumos);
+      // Só aparecem fórmulas completas (com todos os insumos cadastrados)
+      const formulas = todasFormulas
+        .filter((f) => f.itens.length && f.itens.every((it) => mapa[it.insumoId]))
+        .sort((a, b) => (a.numero || 0) - (b.numero || 0));
       return {
         fala: formulas.length
           ? 'Qual sal você vai fazer? ' + formulas.map((f) => `${f.nome}, número ${f.numero}.`).join(' ')
@@ -277,17 +302,17 @@ window.App = window.App || {};
       const f = faltas[0];
       const ins = f.insumo;
       const outras = faltas.slice(1);
-      const q = (kg) => C().sacos(kg, ins.kgPorSaco);
+      const q = (kg) => C().qtd(kg, ins);
       const precisa = q(f.precisaKg);
       const tem = q(f.temKg);
       const caixa = (rotulo, kg, s, ruim) => `
     <div class="qtd${ruim ? ' ruim' : ''}">
       <span class="rot">${ruim ? ic('atencao', 20) : ''}${rotulo}</span>
-      <span class="num">${s.sacos || C().numero(kg)}</span>
-      <span class="un">${s.sacos ? (s.sacos === 1 ? 'saco' : 'sacos') + (s.resto ? ' + ' + C().numero(s.resto) + ' kg' : '') : 'kg'}</span>
+      <span class="num">${s.n || C().numero(kg)}</span>
+      <span class="un">${s.n ? C().nomeUnidade(s.n, ins) + (s.resto ? ' + ' + C().numero(s.resto) + ' kg' : '') : 'kg'}</span>
     </div>`;
       return {
-        fala: `Atenção. Falta ${ins.nome}. Precisa de ${C().sacosFala(f.precisaKg, ins.kgPorSaco)}. Tem ${f.temKg > 0 ? C().sacosFala(f.temKg, ins.kgPorSaco) : 'nada'}.` +
+        fala: `Atenção. Falta ${ins.nome}. Precisa de ${C().qtdFala(f.precisaKg, ins)}. Tem ${f.temKg > 0 ? C().qtdFala(f.temKg, ins) : 'nada'}.` +
           (outras.length ? ` Também falta ${outras.map((o) => o.insumo.nome).join(' e ')}.` : '') +
           ' Toque em avisar o dono.',
         html: `
@@ -334,7 +359,7 @@ window.App = window.App || {};
       const i = m.passo;
       const it = itens[i];
       const ins = m.insumos[it.insumoId];
-      const s = C().sacos(it.kg, ins.kgPorSaco);
+      const s = C().qtd(it.kg, ins);
 
       const minis = itens.map((x, k) => {
         const insk = m.insumos[x.insumoId];
@@ -344,20 +369,20 @@ window.App = window.App || {};
           ${estado === 'feito' ? ic('certo', 30, 3) : ic('saco', 26, 1.8)}<span>${esc(insk.nome.split(' ')[0])}</span></div>`;
       }).join('');
 
-      const grande = s.sacos
-        ? `<span class="qtd-num">${s.sacos}</span><span class="qtd-un">${s.sacos === 1 ? 'SACO' : 'SACOS'}</span>${s.resto ? `<span class="qtd-mais">+ ${C().numero(s.resto)} kg</span>` : ''}`
+      const grande = s.n
+        ? `<span class="qtd-num">${s.n}</span><span class="qtd-un">${C().nomeUnidade(s.n, ins).toUpperCase()}</span>${s.resto ? `<span class="qtd-mais">+ ${C().numero(s.resto)} kg</span>` : ''}`
         : `<span class="qtd-num">${C().numero(it.kg)}</span><span class="qtd-un">KG</span>`;
 
       return {
-        fala: `Passo ${i + 1} de ${itens.length}. Coloque ${C().sacosFala(it.kg, ins.kgPorSaco)} de ${ins.nome}. ` +
-          `${s.sacos ? 'São ' + C().numero(it.kg) + ' quilos. ' : ''}Depois toque em feito.`,
+        fala: `Passo ${i + 1} de ${itens.length}. Coloque ${C().qtdFala(it.kg, ins)} de ${ins.nome}. ` +
+          `${s.n ? 'São ' + C().numero(it.kg) + ' quilos. ' : ''}Depois toque em feito.`,
         html: `
 <main class="tela">
   <div class="topo">${btnVoltar()}<div class="contador-passo">${i + 1} <small>de</small> ${itens.length}</div>${btnFalar()}</div>
   <div class="minis" role="list" aria-label="Insumos da batida" style="grid-template-columns:repeat(${itens.length}, minmax(0, 1fr))">${minis}</div>
   ${fotoInsumo(ins, 160)}
   <div class="nome-insumo">${esc(ins.nome.toUpperCase())}</div>
-  <div class="quantidade">${grande}${s.sacos ? `<span class="qtd-kg">= ${C().numero(it.kg)} kg</span>` : ''}</div>
+  <div class="quantidade">${grande}${s.n ? `<span class="qtd-kg">= ${C().numero(it.kg)} kg</span>` : ''}</div>
   <div class="espaco"></div>
   <button class="btn verde grande" data-acao="feito">${ic('certo', 56, 3)} FEITO</button>
 </main>`,
@@ -456,62 +481,89 @@ window.App = window.App || {};
       };
     },
 
-    // ÁREA DO DONO (provisória: para conferir o que ficou salvo no celular)
-    async dono() {
-      const [misturas, insumos, problemas] = await Promise.all([
+
+    // REGISTROS (Área do dono): o que ficou guardado neste celular
+    async registros() {
+      const [misturas, insumos, problemas, entradas, contagens] = await Promise.all([
         A.db.todos('misturas'), A.db.todos('insumos'), A.db.todos('problemas'),
+        A.db.todos('entradas'), A.db.todos('contagens'),
       ]);
       misturas.sort((a, b) => b.fim.localeCompare(a.fim));
       problemas.sort((a, b) => b.quando.localeCompare(a.quando));
+      entradas.sort((a, b) => b.quando.localeCompare(a.quando));
+      contagens.sort((a, b) => b.quando.localeCompare(a.quando));
+      insumos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const exemplos = misturas.filter((m) => m.exemplo).length;
+      const feitas = misturas.length - exemplos;
       const etq = (x) => (x.exemplo ? ' <span class="etiqueta">exemplo</span>' : '');
       return {
-        fala: 'Área do dono. Aqui aparecem as misturas guardadas neste celular.',
+        fala: 'Registros. Aqui aparece o que ficou guardado neste celular.',
         html: `
 <main class="tela">
-  <div class="topo">${btnVoltar()}<h1 class="titulo">ÁREA DO DONO</h1>${btnFalar()}</div>
+  <div class="topo">${btnVoltar()}<h1 class="titulo">REGISTROS</h1>${btnFalar()}</div>
   <section class="secao">
-    <h2>Misturas guardadas neste celular: ${misturas.length}</h2>
-    <p>${misturas.length - exemplos} ${misturas.length - exemplos === 1 ? "feita" : "feitas"} no app · ${exemplos} de exemplo</p>
+    <h2>Misturas: ${misturas.length}</h2>
+    <p>${feitas} ${feitas === 1 ? 'feita' : 'feitas'} no app · ${exemplos} de exemplo</p>
     <ul class="lista">
       ${misturas.slice(0, 10).map((m) => `<li><b>${esc(C().quando(m.fim))}</b> · ${esc(m.formulaNome)} · ${C().numero(m.totalKg)} kg<br>
-        ${esc(textoDestino(m.destino))} · ${esc(m.pessoaNome || '—')}${m.avisoFalta ? ' · <span class="etiqueta">feita com aviso de falta</span>' : ''}${etq(m)}</li>`).join('')}
+        ${esc(textoDestino(m.destino))} · ${esc(m.pessoaNome || '—')}${m.avisoFalta ? ' · <span class="etiqueta">feita com aviso de falta</span>' : ''}${etq(m)}</li>`).join('') || '<li>Nenhuma.</li>'}
+    </ul>
+  </section>
+  <section class="secao">
+    <h2>Chegadas de insumo: ${entradas.length}</h2>
+    <ul class="lista">
+      ${entradas.slice(0, 10).map((e) => `<li><b>${esc(C().quando(e.quando))}</b> · ${esc(e.insumoNome)} · ${esc(e.texto)}<br>
+        Recebido por ${esc(e.pessoaNome || '—')}</li>`).join('') || '<li>Nenhuma.</li>'}
+    </ul>
+  </section>
+  <section class="secao">
+    <h2>Problemas e avisos: ${problemas.length}</h2>
+    <ul class="lista">
+      ${problemas.slice(0, 10).map((p) => `<li><b>${esc(C().quando(p.quando))}</b> · ${esc(p.pessoaNome || '—')}<br>${esc(descreverProblema(p))}
+        ${p.foto ? `<br><img class="foto-registro" src="${p.foto}" alt="Foto do problema">` : ''}
+        ${p.audio ? `<br><audio controls preload="none" data-audio="${esc(p.id)}"></audio>` : ''}</li>`).join('') || '<li>Nenhum.</li>'}
     </ul>
   </section>
   <section class="secao">
     <h2>Estoque estimado</h2>
     <ul class="lista">
-      ${insumos.map((i) => `<li><b>${esc(i.nome)}</b>: ${C().numero(i.estoqueKg)} kg (${esc(C().sacosTexto(i.estoqueKg, i.kgPorSaco))})${etq(i)}</li>`).join('')}
+      ${insumos.map((i) => `<li><b>${esc(i.nome)}</b>: ${C().numero(i.estoqueKg)} kg (${esc(C().qtdTexto(i.estoqueKg, i))})${etq(i)}</li>`).join('') || '<li>Nenhum insumo.</li>'}
     </ul>
   </section>
+  ${contagens.length ? `
   <section class="secao">
-    <h2>Avisos de falta: ${problemas.length}</h2>
+    <h2>Correções de estoque: ${contagens.length}</h2>
     <ul class="lista">
-      ${problemas.slice(0, 5).map((p) => `<li><b>${esc(C().quando(p.quando))}</b> · ${esc(p.pessoaNome)} · falta ${esc((p.faltas || []).map((f) => f.nome).join(', '))} para ${esc(p.formulaNome)}</li>`).join('') || '<li>Nenhum.</li>'}
+      ${contagens.slice(0, 10).map((c) => `<li><b>${esc(C().quando(c.quando))}</b> · ${esc(c.insumoNome)}: ${C().numero(c.antesKg)} kg → ${C().numero(c.depoisKg)} kg</li>`).join('')}
     </ul>
-  </section>
-  <button class="btn" data-acao="recomecar">Recomeçar demonstração</button>
-  <button class="btn vermelho" data-acao="apagar-exemplos">${ic('problema', 28)} Apagar dados de exemplo</button>
+  </section>` : ''}
 </main>`,
         ligar(r) {
-          ao(r, '[data-acao=voltar]', () => A.ir(A.estado.pessoa ? 'inicio' : 'quem'));
-          ao(r, '[data-acao=recomecar]', async () => {
-            if (!confirm('Apagar TUDO deste celular (inclusive pessoas e misturas feitas) e colocar os exemplos de novo?')) return;
-            await A.exemplo.recomecar();
-            A.estado.pessoa = null;
-            A.ir('quem');
-          });
-          ao(r, '[data-acao=apagar-exemplos]', async () => {
-            if (!confirm('Apagar os dados de exemplo? O que foi cadastrado de verdade continua.')) return;
-            await A.exemplo.apagar();
-            if (A.estado.pessoa && A.estado.pessoa.exemplo) A.estado.pessoa = null;
-            await A.ir('dono');
-            A.mostrarAviso('Exemplos apagados');
+          ao(r, '[data-acao=voltar]', () => A.ir('dono'));
+          // O áudio fica guardado como arquivo no celular; liga cada player ao seu arquivo
+          r.querySelectorAll('[data-audio]').forEach((el) => {
+            const p = problemas.find((x) => x.id === el.dataset.audio);
+            if (p && p.audio instanceof Blob) el.src = URL.createObjectURL(p.audio);
           });
         },
       };
     },
   };
+
+  const NOMES_PROBLEMA = {
+    'faltou-insumo': 'Faltou insumo',
+    'saco-rasgado': 'Saco rasgado',
+    molhado: 'Molhado',
+    'maquina-parada': 'Máquina parada',
+  };
+
+  function descreverProblema(p) {
+    const tipo = NOMES_PROBLEMA[p.tipo] || 'Problema';
+    if (p.faltas && p.faltas.length) {
+      return `${tipo}: ${p.faltas.map((f) => f.nome).join(', ')}${p.formulaNome ? ' (para ' + p.formulaNome + ')' : ''}`;
+    }
+    return p.insumoNome ? `${tipo}: ${p.insumoNome}` : tipo;
+  }
 
   // Reduz a foto para não ocupar muito espaço no celular (quadrada, cortada no centro)
   function reduzirFoto(arquivo, lado) {
@@ -534,5 +586,5 @@ window.App = window.App || {};
     });
   }
 
-  A.ui = { esc, ic };
+  A.ui = { esc, ic, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
 })();

@@ -11,10 +11,10 @@ window.App = window.App || {};
 
   // estoqueKg = estoque estimado agora; cai a cada mistura salva
   const insumos = [
-    { id: 'ex-sal', nome: 'Sal comum', cor: '#e9e7e1', corTexto: '#3d3a33', kgPorSaco: 25, estoqueKg: 3000, estoqueMinimoKg: 1000 },
-    { id: 'ex-nucleo', nome: 'Núcleo mineral', cor: '#e2d6ee', corTexto: '#4b2f73', kgPorSaco: 30, estoqueKg: 1500, estoqueMinimoKg: 300 },
-    { id: 'ex-farelo', nome: 'Farelo de soja', cor: '#ecd3a2', corTexto: '#6b4a12', kgPorSaco: 50, estoqueKg: 100, estoqueMinimoKg: 200 },
-    { id: 'ex-ureia', nome: 'Ureia', cor: '#dfe7f2', corTexto: '#1f3f6e', kgPorSaco: 50, estoqueKg: 100, estoqueMinimoKg: 150 },
+    { id: 'ex-sal', nome: 'Sal comum', cor: '#e9e7e1', corTexto: '#3d3a33', unidade: 'saco', kgPorSaco: 25, estoqueKg: 3000, estoqueMinimoKg: 1000 },
+    { id: 'ex-nucleo', nome: 'Núcleo mineral', cor: '#e2d6ee', corTexto: '#4b2f73', unidade: 'saco', kgPorSaco: 30, estoqueKg: 1500, estoqueMinimoKg: 300 },
+    { id: 'ex-farelo', nome: 'Farelo de soja', cor: '#ecd3a2', corTexto: '#6b4a12', unidade: 'saco', kgPorSaco: 50, estoqueKg: 100, estoqueMinimoKg: 200 },
+    { id: 'ex-ureia', nome: 'Ureia', cor: '#dfe7f2', corTexto: '#1f3f6e', unidade: 'saco', kgPorSaco: 50, estoqueKg: 100, estoqueMinimoKg: 150 },
   ];
 
   // itens: kg de cada insumo por batida, na ordem em que entram no misturador
@@ -98,21 +98,39 @@ window.App = window.App || {};
       await semear();
     },
 
-    // Apaga só o que é exemplo; o que foi cadastrado de verdade fica
+    // Apaga só o que é exemplo; o que foi cadastrado de verdade fica.
+    // Insumo de exemplo usado numa fórmula de verdade é mantido e vira cadastro de verdade.
+    // Devolve os nomes dos insumos mantidos.
     async apagar() {
+      const formulas = await App.db.todos('formulas');
+      const usados = new Set();
+      formulas.filter((f) => !f.exemplo).forEach((f) => f.itens.forEach((it) => usados.add(it.insumoId)));
+      const mantidos = [];
       for (const n of App.db.LOJAS) {
         const todos = await App.db.todos(n);
         const ex = todos.filter((x) => x.exemplo);
-        if (ex.length) await App.db.transacao([n], (l) => ex.forEach((x) => l(n).delete(x.id)));
+        if (!ex.length) continue;
+        await App.db.transacao([n], (l) => ex.forEach((x) => {
+          if (n === 'insumos' && usados.has(x.id)) {
+            l(n).put(Object.assign({}, x, { exemplo: false }));
+            mantidos.push(x.nome);
+          } else {
+            l(n).delete(x.id);
+          }
+        }));
       }
       const atual = await App.db.config('pessoaAtual');
       if (atual && String(atual).startsWith('ex-')) await App.db.apagar('config', 'pessoaAtual');
+      return mantidos;
     },
 
     // Apaga TUDO do celular e coloca os exemplos de novo
+    // (a senha da Área do dono continua a mesma)
     async recomecar() {
+      const senha = await App.db.config('senhaDono');
       for (const n of App.db.LOJAS.concat('config')) await App.db.limpar(n);
       await semear();
+      if (senha) await App.db.definir('senhaDono', senha);
     },
   };
 })();
