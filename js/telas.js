@@ -59,6 +59,13 @@ window.App = window.App || {};
     return '<div class="marca"><img src="icones/icone.svg" alt="" width="30" height="30"><span>Cocho</span></div>';
   }
 
+  // Desenho do cocho do ícone (sal + cocho + pés), na cor pedida. Usado no FAZER MISTURA e na Mistura pronta.
+  function desenhoCocho(tam, cor) {
+    return `<svg width="${tam}" height="${Math.round(tam * 0.62)}" viewBox="14 28 72 59" aria-hidden="true" fill="${cor}">` +
+      '<path d="M28 58 Q50 30 72 58 Z" opacity="0.75"/><path d="M16 57h68l-8 19H24z"/>' +
+      `<path d="M26 76v8M74 76v8" stroke="${cor}" stroke-width="5" stroke-linecap="round"/></svg>`;
+  }
+
   function btnFalar() {
     return `<button class="btn-redondo escuro" data-falar aria-label="Ouvir a instrução" aria-pressed="false">${ic('som', 30)}</button>`;
   }
@@ -256,13 +263,12 @@ window.App = window.App || {};
         fala: `${saudacao}, ${p.nome}. Para fazer uma mistura, toque no botão verde. Se chegou insumo, toque no caminhão. Se deu problema, toque no botão vermelho. ${falaAlertas}`,
         html: `
 <main class="tela">
-  ${marca()}
-  <div class="topo">
-    <button class="btn-pessoa" data-acao="trocar" aria-label="Trocar de pessoa (agora: ${esc(p.nome)})">${avatar(p, 64)}</button>
+  <div class="topo">${marca()}${btnFalar()}</div>
+  <div class="linha-saudacao">
+    <button class="btn-pessoa" data-acao="trocar" aria-label="Trocar de pessoa (agora: ${esc(p.nome)})">${avatar(p, 60)}</button>
     <div class="saudacao">${saudacao},<br><b>${esc(p.nome)}</b></div>
-    ${btnFalar()}
   </div>
-  <button class="btn-principal" data-acao="misturar">${ic('misturar', 110, 1.6)}<span>FAZER MISTURA</span></button>
+  <button class="btn-principal" data-acao="misturar">${desenhoCocho(180, '#ffffff')}<span>FAZER MISTURA</span></button>
   <button class="btn-linha" data-acao="chegada">${ic('caminhao', 56, 1.8)}<span>CHEGOU INSUMO</span></button>
   <button class="btn-linha vermelho" data-acao="problema">${ic('problema', 56)}<span>PROBLEMA</span></button>
   ${alertas.map(cartaoAlerta).join('')}
@@ -415,12 +421,14 @@ window.App = window.App || {};
         fala,
         html: `
 <main class="tela">
-  <div class="topo">${btnVoltar()}<div class="contador-passo"><b>${nFeitos}</b> <small>de</small> <b>${itens.length}</b><small class="bloco">${nFeitos === 1 ? 'feito' : 'feitos'}</small></div>${btnFalar()}</div>
+  <div class="topo">${btnVoltar()}<div class="contador-passo"><span class="pilula"><b>${nFeitos}</b> de <b>${itens.length}</b> ${nFeitos === 1 ? 'feito' : 'feitos'}</span></div>${btnFalar()}</div>
   <div class="minis" role="group" aria-label="Insumos da batida (toque para escolher)" style="grid-template-columns:repeat(${itens.length}, minmax(0, 1fr))">${minis}</div>
-  ${fotoInsumo(ins, 150)}
-  <div class="nome-insumo">${esc(ins.nome.toUpperCase())}</div>
-  <div class="quantidade${jaFeito ? ' apagada' : ''}">${grande}${s.n ? `<span class="qtd-kg">= ${C().numero(it.kg)} kg</span>` : ''}</div>
-  ${jaFeito ? `<div class="selo-feito">${ic('certo', 30, 3)} JÁ COLOCADO</div>` : ''}
+  <div class="cartao-passo">
+    ${fotoInsumo(ins, 150)}
+    <div class="nome-insumo">${esc(ins.nome.toUpperCase())}</div>
+    <div class="quantidade${jaFeito ? ' apagada' : ''}">${grande}${s.n ? `<span class="qtd-kg">= ${C().numero(it.kg)} kg</span>` : ''}</div>
+    ${jaFeito ? `<div class="selo-feito">${ic('certo', 30, 3)} JÁ COLOCADO</div>` : ''}
+  </div>
   <div class="espaco"></div>
   ${tudoFeito ? `<button class="btn verde grande" data-acao="seguir">${ic('seguir', 48, 2.6)} SEGUIR</button>` : ''}
   ${jaFeito
@@ -546,6 +554,7 @@ window.App = window.App || {};
   <div class="circulo-ok">${ic('certo', 110, 3)}</div>
   <h1 class="titulo-pronta">MISTURA PRONTA</h1>
   <div class="bloco-verde total">
+    ${desenhoCocho(96, '#ffffff')}
     <span class="num">${C().numero(mistura.totalKg)}</span>
     <span class="un">KG DE ${esc(mistura.formulaNome.toUpperCase())}</span>
   </div>
@@ -666,5 +675,5 @@ window.App = window.App || {};
     });
   }
 
-  A.ui = { esc, ic, marca, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
+  A.ui = { esc, ic, marca, desenhoCocho, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
 })();

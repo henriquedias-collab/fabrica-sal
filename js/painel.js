@@ -37,7 +37,7 @@ window.App = window.App || {};
     return `
   <section class="secao" aria-labelledby="t-producao">
     <h2 id="t-producao">Produção</h2>
-    <div class="grade-2">
+    <div class="grade-2 numeros-terra">
       <div class="numero-grande"><span class="valor">${p.n}</span><span class="legenda">${p.n === 1 ? 'mistura' : 'misturas'}</span></div>
       <div class="numero-grande"><span class="valor">${n(p.kg)}</span><span class="legenda">kg de sal feitos</span></div>
     </div>
@@ -167,8 +167,10 @@ window.App = window.App || {};
         fala: falas.join(' '),
         html: `
 <main class="tela painel">
-  ${topo('PAINEL')}
-  <p class="periodo">Últimos 7 dias · ${dataCurta(d.inicio)} a ${dataCurta(d.agora)}</p>
+  <div class="topo">${U().btnVoltar()}
+    <div class="titulo titulo-painel"><img src="icones/icone.svg" alt="" width="40" height="40">
+      <span><h1>Painel</h1><small>Últimos 7 dias · ${dataCurta(d.inicio)} a ${dataCurta(d.agora)}</small></span></div>
+    ${U().btnFalar()}</div>
   ${abertos.length ? `<button class="alerta vermelho alerta-botao" data-acao="ver-problemas">${ic('problema', 40, 2.4)}<div>
     <b>${abertos.length} ${abertos.length === 1 ? 'problema aberto' : 'problemas abertos'}</b><span>Toque para ver</span></div></button>` : ''}
   ${cartaoProducao(d.producao)}
