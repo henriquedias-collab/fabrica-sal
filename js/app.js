@@ -15,6 +15,10 @@ window.App = window.App || {};
 
   // Mostra uma tela
   A.ir = async function (nome, params) {
+    if (A.estado.versaoNova && (nome === 'inicio' || nome === 'quem')) {
+      location.reload();
+      return;
+    }
     A.voz.parar();
     const doDono = TELAS_DONO.includes(nome) || !!(params && params.dono);
     if (doDono && !A.estado.donoLiberado) {
@@ -90,7 +94,12 @@ window.App = window.App || {};
 
   // Funcionar sem internet (só quando aberto por um endereço http/https)
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    const tinhaVersao = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker:', e));
+    // Chegou versão nova do app: recarrega quando a pessoa voltar ao Início (nunca no meio de uma mistura)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (tinhaVersao) A.estado.versaoNova = true;
+    });
   }
   // Pede ao navegador para não apagar os dados do app quando faltar espaço
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});

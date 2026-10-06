@@ -1,6 +1,6 @@
 // Service worker: guarda os arquivos do app no celular para funcionar sem internet.
 // Ao mudar qualquer arquivo do app, aumente a VERSAO para os celulares baixarem a nova.
-const VERSAO = 'fabrica-sal-925e132c26';
+const VERSAO = 'fabrica-sal-f26216894f';
 const ARQUIVOS = [
   './',
   'index.html',
@@ -20,8 +20,14 @@ const ARQUIVOS = [
   'icones/icone-512.png',
 ];
 
+// Ao instalar uma versão, baixa tudo direto do servidor ("reload"), sem usar cópias velhas do navegador
+// (o GitHub deixa o navegador reaproveitar arquivos por até 10 minutos).
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSAO).then((c) => c.addAll(ARQUIVOS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(VERSAO)
+      .then((c) => c.addAll(ARQUIVOS.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -32,14 +38,16 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Responde com o que está guardado; se tiver internet, atualiza a cópia guardada por trás
+// Responde com o que está guardado; se tiver internet, confere com o servidor e atualiza a cópia guardada
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  const chave = url.origin + url.pathname; // guarda sem "?…" no endereço
   e.respondWith(
     caches.open(VERSAO).then(async (cache) => {
-      const guardado = await cache.match(e.request, { ignoreSearch: true });
-      const daRede = fetch(e.request)
-        .then((r) => { if (r.ok) cache.put(e.request, r.clone()); return r; })
+      const guardado = await cache.match(chave);
+      const daRede = fetch(chave, { cache: 'no-cache' })
+        .then((r) => { if (r.ok) cache.put(chave, r.clone()); return r; })
         .catch(() => guardado);
       return guardado || daRede;
     })
