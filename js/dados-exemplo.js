@@ -168,22 +168,37 @@ window.App = window.App || {};
     ];
   }
 
-  // Contagem de estoque de 2 dias atrás (previsto x real): núcleo proteico sumiu 1 saco; sal comum bateu; milho sem contagem
+  // Contagem de estoque de 4 dias atrás (previsto x real; entra nas perdas do resumo da semana): núcleo proteico sumiu 1 saco; sal comum bateu; milho sem contagem
   function contagensExemplo() {
-    const quando = new Date(quandoDias(2, 17)).toISOString();
+    const quando = new Date(quandoDias(4, 17)).toISOString();
     return [
       { id: 'ex-contagem-1', insumoId: 'ex-nucleo-prot', insumoNome: 'Núcleo proteico', antesKg: 425, depoisKg: 400, quando, tipo: 'contagem', exemplo: true },
       { id: 'ex-contagem-2', insumoId: 'ex-sal', insumoNome: 'Sal comum', antesKg: 3000, depoisKg: 3000, quando, tipo: 'contagem', exemplo: true },
     ];
   }
 
+  // "Foto" de exemplo (desenho simples de um saco rasgado), só para a demonstração mostrar a foto do problema
+  const FOTO_SACO_RASGADO = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="#e8dcc8"/>' +
+    '<path d="M34 22h52l-8 14c18 8 26 24 26 40 0 22-16 34-44 34S16 98 16 76c0-16 8-32 26-40z" fill="#f5efe4" stroke="#7a3d00" stroke-width="4"/>' +
+    '<path d="M34 74l10 8 8-10 10 10 8-8 10 8" fill="none" stroke="#b3261e" stroke-width="5"/>' +
+    '<circle cx="60" cy="102" r="3" fill="#fff"/><circle cx="70" cy="106" r="2.5" fill="#fff"/><circle cx="50" cy="105" r="2" fill="#fff"/></svg>');
+
   // Problemas: saco de ureia rasgado (aberto), faltou farelo (aberto), máquina parada (resolvido)
   function problemasExemplo() {
     return [
       {
         id: 'ex-problema-1', tipo: 'saco-rasgado', quando: new Date(quandoDias(3, 9, 40)).toISOString(),
-        insumoId: 'ex-ureia', insumoNome: 'Ureia', audio: null, audioSegundos: 0, foto: null,
+        insumoId: 'ex-ureia', insumoNome: 'Ureia', audio: null, audioSegundos: 0, foto: FOTO_SACO_RASGADO,
         pessoaId: 'ex-ze', pessoaNome: 'Zé', exemplo: true,
+        perdaKg: 25, // 1 saco de ureia perdido (informado pelo dono no resumo)
+      },
+      {
+        id: 'ex-problema-4', tipo: 'molhado', quando: new Date(quandoDias(6, 15, 10)).toISOString(),
+        insumoId: 'ex-sal', insumoNome: 'Sal comum', audio: null, audioSegundos: 0, foto: null,
+        pessoaId: 'ex-antonio', pessoaNome: 'Antônio', exemplo: true,
+        resolvidoEm: new Date(quandoDias(5, 10)).toISOString(),
+        perdaKg: 50, // 2 sacos de sal molhados
       },
       {
         id: 'ex-problema-2', tipo: 'faltou-insumo', quando: new Date(quandoDias(1, 6, 50)).toISOString(),
@@ -222,6 +237,7 @@ window.App = window.App || {};
       // Época de exemplo: seca marcada; a seca começa em maio e as águas em outubro (o painel avisa no mês da troca)
       l('config').put({ chave: 'epocaAtual', valor: 'seca' });
       l('config').put({ chave: 'mesesEpoca', valor: { inicioSeca: 5, inicioAguas: 10 } });
+      l('config').put({ chave: 'nomeFazenda', valor: 'Fazenda Exemplo' });
     });
   }
 

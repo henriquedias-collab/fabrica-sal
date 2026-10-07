@@ -783,3 +783,20 @@ h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .seca
 .faixa-epoca svg { flex: none; }
 .faixa-epoca b { display: block; font-size: 30px; letter-spacing: 1px; line-height: 1.1; }
 .faixa-epoca span { display: block; font-size: 16px; opacity: 0.92; }
+
+/* ---------- Resumo da semana ---------- */
+.nav-semana { display: flex; align-items: center; gap: 12px; }
+.nav-rotulo { flex: 1; text-align: center; display: flex; flex-direction: column; }
+.nav-rotulo b { font-size: 26px; color: var(--terra-escura); }
+.nav-rotulo small { font-size: 16px; color: var(--tinta-2); }
+.seta-frente svg { transform: rotate(180deg); }
+.btn-redondo[disabled] { opacity: 0.35; box-shadow: none; }
+.sem-dado { display: inline-block; padding: 1px 8px; border-radius: 8px; background: var(--neutro); color: var(--tinta-2); font-size: 0.85em; font-weight: 700; font-style: normal; }
+.destaque-terra { background: var(--terra); color: #fff; box-shadow: 0 5px 0 var(--terra-escura); }
+.destaque-terra .legenda, .destaque-terra .q small { color: #fff; opacity: 0.92; }
+.destaque-terra .valor { font-size: 48px; }
+.numeros-perda .numero-grande .valor { font-size: 30px; }
+.numeros-perda .numero-grande { padding: 10px; }
+.comparacao li { align-items: flex-start; }
+.var { text-align: right; display: flex; flex-direction: column; }
+.var small { font-size: 14px; color: var(--tinta-2); }

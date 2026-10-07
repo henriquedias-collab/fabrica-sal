@@ -256,6 +256,7 @@ window.App = window.App || {};
   ${U().marca()}
   ${topo('ÁREA DO DONO')}
   ${avisoCopia}
+  <button class="btn-menu painel-menu" data-ir="resumo">${ic('calendario', 40, 2.2)}<span>Resumo da semana<small>Gasto, perdas, custo por cabeça, lotes e compras</small></span>${ic('seguir', 28, 2.4)}</button>
   <button class="btn-menu painel-menu" data-ir="painel">${ic('grafico', 40, 2.2)}<span>Painel<small>Produção, estoque, consumo, compras e problemas</small></span>${ic('seguir', 28, 2.4)}</button>
   ${cartaoEpoca(ep.epoca, ep.aviso)}
   <button class="btn" data-ir="exportarCopia">${ic('baixar', 32, 2.4)} EXPORTAR CÓPIA</button>
