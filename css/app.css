@@ -773,3 +773,13 @@ h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .seca
 .resultado-contagem { margin: 0; font-size: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .preco-kg { margin: 0; font-size: 20px; min-height: 26px; }
 .preco-kg .q b { font-size: 24px; color: var(--terra-escura); }
+
+/* ---------- Época marcada na tela QUAL SAL? (Parte B) ---------- */
+.faixa-epoca {
+  width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-radius: 24px; color: #fff;
+}
+.faixa-epoca.seca { background: var(--terra-escura); }
+.faixa-epoca.aguas { background: #1f4fa0; }
+.faixa-epoca svg { flex: none; }
+.faixa-epoca b { display: block; font-size: 30px; letter-spacing: 1px; line-height: 1.1; }
+.faixa-epoca span { display: block; font-size: 16px; opacity: 0.92; }

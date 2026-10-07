@@ -174,6 +174,33 @@ window.App = window.App || {};
     else A.ir('passo');
   }
 
+  // Sais que o operador pode fazer agora: fórmulas completas (todos os insumos cadastrados) e, com época marcada,
+  // só as daquela época e as de ano todo — as da época primeiro. escondidas = quantas ficaram de fora pela época.
+  async function salsParaMistura() {
+    const [todas, insumos, epoca] = await Promise.all([A.db.todos('formulas'), A.db.todos('insumos'), A.db.config('epocaAtual')]);
+    const mapa = porId(insumos);
+    const completas = todas.filter((f) => f.itens.length && f.itens.every((it) => mapa[it.insumoId]));
+    const daEpoca = epoca
+      ? completas.filter((f) => [epoca, 'ano'].includes(C().epocaDaFormula(f)))
+      : completas;
+    const ordem = (f) => (epoca && C().epocaDaFormula(f) === epoca ? 0 : 1);
+    daEpoca.sort((a, b) => ordem(a) - ordem(b) || (a.numero || 0) - (b.numero || 0));
+    return { formulas: daEpoca, mapa, epoca: epoca || null, escondidas: completas.length - daEpoca.length };
+  }
+
+  // Abre um sal: escolhe o tamanho (se tiver mais de um) ou começa direto
+  function abrirSal(f, mapa) {
+    if (C().tamanhos(f).length > 1) A.ir('tamanho', { formulaId: f.id });
+    else iniciarMistura(f, C().tamanhoPadrao(f), mapa);
+  }
+
+  // FAZER MISTURA: se só um sal serve para a época, já abre nele (voltar leva à lista, que mostra só ele)
+  async function fazerMistura() {
+    const { formulas, mapa } = await salsParaMistura();
+    if (formulas.length === 1) abrirSal(formulas[0], mapa);
+    else A.ir('escolher');
+  }
+
   // Continua a mistura que ficou pela metade (guardada no celular)
   async function continuarMistura() {
     const m = await C().carregarAndamento();
@@ -375,7 +402,7 @@ window.App = window.App || {};
           ao(r, '[data-acao=trocar]', () => A.ir('quem'));
           ao(r, '[data-acao=continuar]', () => continuarMistura());
           ao(r, '[data-acao=misturar]', async () => {
-            if (!parada) return A.ir('escolher');
+            if (!parada) return fazerMistura();
             // Uma mistura por vez: primeiro termina a que está pela metade
             await continuarMistura();
             A.mostrarAviso('Primeiro termine a mistura que está pela metade');
@@ -392,35 +419,65 @@ window.App = window.App || {};
     },
 
     // ESCOLHER O SAL
+    // Com a época marcada pelo dono, só aparecem os sais daquela época e os de ano todo (os da época primeiro).
+    // Sem época marcada, aparecem todos. Na Área do dono continuam todas as fórmulas.
     async escolher() {
-      const [todasFormulas, insumos] = await Promise.all([A.db.todos('formulas'), A.db.todos('insumos')]);
-      const mapa = porId(insumos);
-      // Só aparecem fórmulas completas (com todos os insumos cadastrados)
-      const formulas = todasFormulas
-        .filter((f) => f.itens.length && f.itens.every((it) => mapa[it.insumoId]))
-        .sort((a, b) => (a.numero || 0) - (b.numero || 0));
+      const { formulas, mapa, epoca, escondidas } = await salsParaMistura();
+      const ep = epoca ? C().EPOCAS[epoca] : null;
+      const faixaEpoca = ep ? `
+  <div class="faixa-epoca ${epoca}" role="note">
+    ${ic(ep.icone, 52, 2.2)}
+    <div><b>ÉPOCA: ${ep.nome}</b><span>Só aparecem os sais ${ep.fala} e do ano todo.</span></div>
+  </div>` : '';
+      if (!formulas.length) {
+        // Nenhum sal serve para a época marcada (ou nenhum cadastrado): aviso para chamar o dono
+        const motivo = ep && escondidas ? `Nenhum sal ${ep.fala} cadastrado.` : 'Nenhum sal cadastrado.';
+        return {
+          fala: `${ep ? 'Época ' + ep.fala + '. ' : ''}${motivo} Chame o dono. Toque em avisar o dono.`,
+          html: `
+<main class="tela centro">
+  <div class="topo">${btnVoltar()}<span class="espaco"></span>${btnFalar()}</div>
+  ${faixaEpoca}
+  <div class="circulo-alerta laranja">${ic('atencao', 72, 2.2)}</div>
+  <h1 class="titulo-falta laranja">CHAME O DONO</h1>
+  <p class="instrucao">${esc(motivo)} Não dá para fazer mistura agora.</p>
+  <div class="espaco"></div>
+  <button class="btn escuro grande" data-acao="avisar" style="font-size:28px">${ic('mensagem', 40)} AVISAR O DONO</button>
+  <button class="btn" data-acao="voltar2">${ic('voltar', 30, 2.6)} VOLTAR</button>
+</main>`,
+          ligar(r) {
+            ao(r, '[data-acao=voltar]', () => A.ir('inicio'));
+            ao(r, '[data-acao=voltar2]', () => A.ir('inicio'));
+            ao(r, '[data-acao=avisar]', async (b) => {
+              b.disabled = true;
+              const p = A.estado.pessoa;
+              await A.db.salvar('problemas', {
+                id: A.db.novoId('problema'), tipo: 'sem-sal-epoca', quando: new Date().toISOString(), epoca: epoca || null,
+                pessoaId: p.id, pessoaNome: p.nome, exemplo: false,
+              });
+              await A.ir('inicio');
+              A.mostrarAviso('Aviso guardado para o dono');
+              A.voz.falar('Pronto. O aviso ficou guardado para o dono.');
+            });
+          },
+        };
+      }
       return {
-        fala: formulas.length
-          ? 'Qual sal você vai fazer? ' + formulas.map((f) => `${f.nome}, número ${f.numero}.`).join(' ')
-          : 'Nenhum sal cadastrado.',
+        fala: (ep ? `Época ${ep.fala}. ` : '') + 'Qual sal você vai fazer? ' + formulas.map((f) => `${f.nome}, número ${f.numero}.`).join(' '),
         html: `
 <main class="tela">
   <div class="topo">${btnVoltar()}<h1 class="titulo">QUAL SAL?</h1>${btnFalar()}</div>
+  ${faixaEpoca}
   ${formulas.map((f) => `
   <button class="cartao-sal" data-formula="${esc(f.id)}" style="--cor:${f.cor};--cor-clara:${f.corClara}">
     <span class="foto-sal">${f.foto ? `<img src="${f.foto}" alt="">` : ic(C().TIPOS[f.tipo] ? C().TIPOS[f.tipo].icone : 'saco', 96, 1.4)}
       <span class="selos-sal">${seloTipo(f)}${seloEpoca(f)}</span></span>
     <span class="faixa"><span>${esc(f.nome.toUpperCase())}</span><span class="numero">${f.numero}</span></span>
-  </button>`).join('') || '<p class="vazio">Nenhum sal cadastrado.</p>'}
+  </button>`).join('')}
 </main>`,
         ligar(r) {
           ao(r, '[data-acao=voltar]', () => A.ir('inicio'));
-          ao(r, '[data-formula]', (b) => {
-            const f = formulas.find((x) => x.id === b.dataset.formula);
-            // Mais de um tamanho de batida: o operador escolhe; um só: começa direto
-            if (C().tamanhos(f).length > 1) A.ir('tamanho', { formulaId: f.id });
-            else iniciarMistura(f, C().tamanhoPadrao(f), mapa);
-          });
+          ao(r, '[data-formula]', (b) => abrirSal(formulas.find((x) => x.id === b.dataset.formula), mapa));
         },
       };
     },
@@ -1046,10 +1103,12 @@ window.App = window.App || {};
     molhado: 'Molhado',
     'maquina-parada': 'Máquina parada',
     'limite-insumo': 'Sal passa do limite',
+    'sem-sal-epoca': 'Nenhum sal para a época marcada',
   };
 
   function descreverProblema(p) {
     const tipo = NOMES_PROBLEMA[p.tipo] || 'Problema';
+    if (p.tipo === 'sem-sal-epoca' && C().EPOCAS[p.epoca]) return `${tipo} (${C().EPOCAS[p.epoca].nome.toLowerCase()})`;
     if (p.limites && p.limites.length) {
       return `${tipo}: ${p.formulaNome || ''} (${p.limites.map((v) => C().textoLimite(v)).join('; ')})`;
     }
