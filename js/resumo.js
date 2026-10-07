@@ -152,6 +152,9 @@ window.App = window.App || {};
     </ul>
     ${r.periodo.emAndamento ? '<p class="ajuda">Semana em andamento: compare de novo no domingo.</p>' : ''}
   </section>
+
+  <button class="btn verde grande" data-acao="pdf">${ic('baixar', 44, 2.4)} PDF DO RESUMO</button>
+  <p class="ajuda centro">Uma página, feita no próprio celular (funciona sem internet).${r.nomeFazenda ? '' : ' Dica: coloque o nome da fazenda em Área do dono → Dados da fazenda.'}</p>
 </main>`,
         async ligar(raiz) {
           const DIA2 = A.resumoCalc.DIA;
@@ -159,6 +162,18 @@ window.App = window.App || {};
           U().ao(raiz, '[data-acao=semana-antes]', () => A.ir('resumo', { semana: r.periodo.inicio - 7 * DIA2 }));
           U().ao(raiz, '[data-acao=semana-depois]', () => A.ir('resumo', { semana: r.periodo.inicio + 7 * DIA2 }));
           U().ao(raiz, '[data-perda]', (b) => A.ir('perda', { problemaId: b.dataset.perda, semana: r.periodo.inicio }));
+          U().ao(raiz, '[data-acao=pdf]', async (b) => {
+            b.disabled = true;
+            try {
+              const { blob, nome } = await A.pdf.resumo(r);
+              A.pdf.baixar(blob, nome);
+              A.mostrarAviso('PDF pronto: ' + nome);
+            } catch (e) {
+              console.error(e);
+              A.mostrarAviso('Não deu para fazer o PDF. Tente de novo.', 'laranja');
+            }
+            b.disabled = false;
+          });
           // Fotos dos problemas (guardadas no registro do problema)
           for (const img of raiz.querySelectorAll('[data-foto]')) {
             const prob = await A.db.pegar('problemas', img.dataset.foto);

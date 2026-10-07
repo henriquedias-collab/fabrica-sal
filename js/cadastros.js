@@ -265,6 +265,7 @@ window.App = window.App || {};
   ${item('formulas', 'misturar', 'Fórmulas', n(formulas, 'cadastrada', 'cadastradas'))}
   ${item('pastos', 'pasto', 'Pastos e lotes', n(pastos, 'cadastrado', 'cadastrados'))}
   ${item('epoca', 'calendario', 'Época e lotes', 'Meses da troca e o sal de cada lote')}
+  ${item('fazenda', 'casa', 'Dados da fazenda', 'Nome da fazenda (resumo e PDFs)')}
   ${item('pessoas', 'pessoa', 'Pessoas', n(pessoas.filter((p) => p.ativo !== false), 'na lista', 'na lista'))}
   ${item('registros', 'mensagem', 'Registros', 'Misturas, chegadas, problemas e estoque')}
   ${item('exemplos', 'ajustes', 'Dados de exemplo', 'Apagar ou recomeçar a demonstração')}
@@ -332,6 +333,31 @@ window.App = window.App || {};
             await A.db.definir('mesesEpoca', seca || aguas ? { inicioSeca: seca, inicioAguas: aguas } : null);
             await A.ir('epoca');
             A.mostrarAviso('Meses da troca salvos');
+          });
+        },
+      };
+    },
+
+    // DADOS DA FAZENDA: nome (aparece no resumo e nos PDFs)
+    async fazenda() {
+      const nome = (await A.db.config('nomeFazenda')) || '';
+      return {
+        fala: 'Dados da fazenda. Escreva o nome da fazenda e toque em salvar.',
+        html: `
+<main class="tela">
+  ${topo('DADOS DA FAZENDA')}
+  <label class="rotulo" for="nome-fazenda">Nome da fazenda</label>
+  <input id="nome-fazenda" class="campo" type="text" autocomplete="off" autocapitalize="words" maxlength="40" placeholder="Ex.: Fazenda Boa Vista" value="${esc(nome)}">
+  <p class="ajuda">Aparece no Resumo da semana e no nome dos arquivos PDF.</p>
+  <button class="btn verde grande" data-acao="salvar">${ic('certo', 44, 3)} SALVAR</button>
+</main>`,
+        ligar(r) {
+          U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
+          U().ao(r, '[data-acao=salvar]', async () => {
+            const v = r.querySelector('#nome-fazenda').value.trim().replace(/\s+/g, ' ');
+            await A.db.definir('nomeFazenda', v);
+            await A.ir('dono');
+            A.mostrarAviso(v ? 'Nome da fazenda salvo' : 'Nome da fazenda apagado');
           });
         },
       };
