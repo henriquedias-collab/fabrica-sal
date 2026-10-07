@@ -14,7 +14,7 @@ window.App = window.App || {};
   const FORMATO = 1;
   const DIAS_AVISO = 7; // cópia mais velha que isso fica laranja
   // Valores de config que são deste celular e não vão na cópia (nem são trocados ao restaurar)
-  const CONFIG_DO_CELULAR = ['senhaDono', 'pessoaAtual', 'ultimaCopia'];
+  const CONFIG_DO_CELULAR = ['senhaDono', 'pessoaAtual', 'ultimaCopia', 'resumoLembrete'];
   const CONTAGEM = [
     ['misturas', 'misturas'], ['entradas', 'chegadas de insumo'], ['problemas', 'problemas'],
     ['insumos', 'insumos'], ['formulas', 'fórmulas'], ['pastos', 'pastos'], ['pessoas', 'pessoas'],

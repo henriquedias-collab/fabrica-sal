@@ -295,5 +295,35 @@ window.App = window.App || {};
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
-  A.pdf = { carregar, logo, nomeArquivo, Relatorio, COR, resumo, baixar, texto };
+  // ENVIAR NO WHATSAPP: abre o compartilhamento do celular com o PDF e a mensagem curta.
+  // Se o celular não aceitar arquivo: salva o PDF e abre o WhatsApp só com a mensagem (no número do dono, se tiver).
+  // A mensagem também vai para a área de transferência (alguns WhatsApp ignoram o texto junto do arquivo).
+  // Devolve 'compartilhado', 'cancelado' ou 'whatsapp'.
+  async function compartilhar(blob, nome, mensagem, numero) {
+    try { if (navigator.clipboard) navigator.clipboard.writeText(mensagem).catch(() => {}); } catch (e) { /* sem área de transferência */ }
+    const arquivo = new File([blob], nome, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+      try {
+        await navigator.share({ files: [arquivo], text: mensagem, title: nome.replace(/\.pdf$/, '') });
+        return 'compartilhado';
+      } catch (e) {
+        if (e && e.name === 'AbortError') return 'cancelado'; // a pessoa fechou a lista sem escolher
+        console.warn('Compartilhar com arquivo falhou:', e);
+      }
+    }
+    baixar(blob, nome);
+    const link = `https://wa.me/${numero || ''}?text=${encodeURIComponent(mensagem)}`;
+    const janela = window.open(link, '_blank');
+    if (!janela) location.href = link;
+    return 'whatsapp';
+  }
+
+  // Número para o link do WhatsApp: só dígitos, com 55 (Brasil) na frente quando faltar. Vazio = sem número.
+  function numeroWhats(s) {
+    const d = String(s || '').replace(/\D/g, '').replace(/^0+/, '');
+    if (!d) return '';
+    return d.length <= 11 ? '55' + d : d;
+  }
+
+  A.pdf = { carregar, logo, nomeArquivo, Relatorio, COR, resumo, baixar, texto, compartilhar, numeroWhats };
 })();

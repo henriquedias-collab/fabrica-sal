@@ -196,7 +196,30 @@
     };
   }
 
-  const api = { calcular, inicioDaSemana, DIA };
+  // MENSAGEM CURTA para o WhatsApp (3 a 5 linhas com os números principais). Entra o resultado de calcular().
+  // Também é pura: o envio automático na nuvem usa a mesma mensagem.
+  function mensagem(r) {
+    const num = (x, casas) => Number(x).toLocaleString('pt-BR', { minimumFractionDigits: casas || 0, maximumFractionDigits: casas || 0 });
+    const reais = (v, casas) => (v === null || v === undefined ? 'sem dado' : 'R$ ' + num(v, casas));
+    const s = r.semana;
+    const p = s.perdas;
+    const ano = new Date(r.periodo.inicio).getFullYear();
+    const linhas = [
+      `*Cocho${r.nomeFazenda ? ' - ' + r.nomeFazenda : ''}* - Resumo de ${r.periodo.rotulo}/${ano}${r.periodo.emAndamento ? ' (até hoje)' : ''}`,
+      `Gasto: ${reais(s.gasto)} · ${s.misturas} ${s.misturas === 1 ? 'mistura' : 'misturas'} · ${num(s.kgFeitos)} kg de sal`,
+      `Problemas: ${p.quantidade} · perdas ${p.reais === null ? 'sem dado' : reais(p.reais)}`,
+      `Custo por cabeça/dia: ${reais(s.custoCabDia, 2)}`,
+    ];
+    const fora = s.lotes.filter((l) => l.nivel === 'acima' || l.nivel === 'abaixo').map((l) => `${l.nome} ${l.nivel}`);
+    const acabando = r.estoque.map((e) => e.nome);
+    const alerta = [];
+    if (acabando.length) alerta.push(`Acabando: ${acabando.slice(0, 3).join(', ')}${acabando.length > 3 ? '...' : ''}`);
+    if (fora.length) alerta.push(`Fora da meta: ${fora.slice(0, 2).join(', ')}${fora.length > 2 ? '...' : ''}`);
+    if (alerta.length) linhas.push(alerta.join(' · '));
+    return linhas.join('\n');
+  }
+
+  const api = { calcular, mensagem, inicioDaSemana, DIA };
   if (raiz.App) raiz.App.resumoCalc = api; // no app (navegador)
   raiz.CochoResumo = api; // fora do app (ex.: Google Apps Script)
 })(typeof window !== 'undefined' ? (window.App = window.App || {}, window) : this);

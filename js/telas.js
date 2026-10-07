@@ -27,10 +27,12 @@ window.App = window.App || {};
     deposito: '<path d="M3 10 12 4l9 6v10H3z"/><path d="M9 20v-6h6v6"/>',
     camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     mais: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+    fechar: '<path d="M6 6l12 12"/><path d="M18 6 6 18"/>',
     saco: '<path d="M8.5 3h7l-1.5 3.2c3 1.4 5 4.4 5 8.3 0 4.2-3 6.5-7 6.5s-7-2.3-7-6.5c0-3.9 2-6.9 5-8.3L8.5 3z"/><path d="M10 6.2h4"/>',
     pessoa: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
     chave: '<circle cx="8" cy="15" r="4"/><path d="M11 12 20 3"/><path d="M17 6l3 3"/>',
     mensagem: '<path d="M4 5h16v11H8l-4 4V5z"/>',
+    whats: '<path d="M4.5 20l1.2-4A8 8 0 1 1 8.4 18.8z"/><path d="M9.2 8.6c-.2 2.9 2.6 6.2 6 6.2l.9-1.4-1.9-1-1 .9c-1-.5-1.7-1.2-2.2-2.2l.9-1-1-1.9z"/>',
     ajustes: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
     pasto: '<path d="M3 20h18"/><path d="M6 20v-5M6 15c0-2 1-3 2-4M6 15c0-2-1-3-2-4"/><path d="M15 20v-8M15 12c0-2.5 1.5-4 3-5M15 12c0-2.5-1.5-4-3-5"/>',
     seguir: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
@@ -379,6 +381,14 @@ window.App = window.App || {};
   <button class="alerta laranja cartao-continuar" data-acao="continuar">${ic('atencao', 52, 2.4)}<div>
     <b>MISTURA PELA METADE</b><strong>CONTINUAR</strong>
     <span>${esc(parada.formula.nome)}${falta.length ? ' · falta: ' + falta.map((x) => `${esc(x.nome)} ${esc(x.texto)}`).join(', ') : ' · falta escolher o destino'}</span></div></button>` : '';
+      // Lembrete de segunda-feira (para o dono): o resumo da semana passada está pronto. Some ao enviar ou tocar no X.
+      const semanaPassada = A.resumoCalc.inicioDaSemana(Date.now() - 7 * A.resumoCalc.DIA);
+      const lembrete = new Date().getDay() === 1 && (await A.db.config('resumoLembrete')) !== semanaPassada;
+      const cartaoLembrete = lembrete ? `
+  <div class="lembrete-resumo">
+    <button class="alerta" data-acao="resumo">${ic('calendario', 44, 2.2)}<div><b>Resumo da semana pronto. Enviar?</b><span>Para o dono (pede a senha)</span></div></button>
+    <button class="btn-pequeno" data-acao="lembrete-depois" aria-label="Agora não">${ic('fechar', 30, 2.6)}</button>
+  </div>` : '';
       const falaParada = parada
         ? `Tem uma mistura de ${parada.formula.nome} pela metade. Para continuar, toque no botão amarelo de cima. `
         : '';
@@ -397,6 +407,7 @@ window.App = window.App || {};
   <button class="btn-linha" data-acao="chegada">${ic('caminhao', 56, 1.8)}<span>CHEGOU INSUMO</span></button>
   <button class="btn-linha vermelho" data-acao="problema">${ic('problema', 56)}<span>PROBLEMA</span></button>
   ${alertas.map(cartaoAlerta).join('')}
+  ${cartaoLembrete}
 </main>`,
         ligar(r) {
           ao(r, '[data-acao=trocar]', () => A.ir('quem'));
@@ -409,6 +420,11 @@ window.App = window.App || {};
             A.voz.falar('Primeiro termine a mistura que está pela metade.');
           });
           ao(r, '[data-acao=chegada]', () => A.ir('chegada'));
+          ao(r, '[data-acao=resumo]', () => A.ir('resumo', {}));
+          ao(r, '[data-acao=lembrete-depois]', async () => {
+            await A.db.definir('resumoLembrete', semanaPassada);
+            await A.ir('inicio');
+          });
           ao(r, '[data-acao=problema]', () => A.ir('problema'));
           ao(r, '[data-acao=em-breve]', () => {
             A.mostrarAviso('Esta parte ainda vai ser feita', 'laranja');

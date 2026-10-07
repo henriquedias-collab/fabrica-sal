@@ -800,3 +800,11 @@ h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .seca
 .comparacao li { align-items: flex-start; }
 .var { text-align: right; display: flex; flex-direction: column; }
 .var small { font-size: 14px; color: var(--tinta-2); }
+
+/* Lembrete de segunda-feira no Início: "Resumo da semana pronto. Enviar?" (não é alerta: creme com terra) */
+.lembrete-resumo { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.lembrete-resumo .alerta { flex: 1; background: var(--cartao); border-color: var(--borda-forte); color: var(--terra-escura);
+  width: 100%; text-align: left; font: inherit; cursor: pointer; box-shadow: 0 5px 0 var(--borda-forte); min-height: 64px; }
+.lembrete-resumo .alerta b { font-size: 20px; }
+.lembrete-resumo .alerta span { display: block; font-size: 17px; color: var(--tinta-2); }
+.lembrete-resumo .btn-pequeno { width: 64px; height: 64px; flex: none; }

@@ -53,6 +53,7 @@ window.App = window.App || {};
       if (acima.length) falas.push(`Acima da meta: ${acima.join(', ')}.`);
       if (abaixo.length) falas.push(`Abaixo da meta: ${abaixo.join(', ')}.`);
       if (r.estoque.length) falas.push(`Acabando em até 15 dias: ${r.estoque.map((e) => e.nome).join(', ')}.`);
+      falas.push('Para mandar, toque em enviar no WhatsApp.');
 
       const linhaProblema = (x) => `
       <li class="item-painel">
@@ -87,6 +88,7 @@ window.App = window.App || {};
       const semPrecoCompra = r.estoque.filter((e) => e.comprarUnidades && e.comprarReais === null).map((e) => e.nome);
       const totalCompras = r.estoque.reduce((acc, e) => acc + (e.comprarReais || 0), 0);
       const cmp = r.comparacao;
+      const whatsDono = A.pdf.numeroWhats(await A.db.config('whatsDono'));
 
       return {
         fala: falas.join(' '),
@@ -153,7 +155,9 @@ window.App = window.App || {};
     ${r.periodo.emAndamento ? '<p class="ajuda">Semana em andamento: compare de novo no domingo.</p>' : ''}
   </section>
 
-  <button class="btn verde grande" data-acao="pdf">${ic('baixar', 44, 2.4)} PDF DO RESUMO</button>
+  <button class="btn verde grande" data-acao="whats">${ic('whats', 44, 2.2)} ENVIAR NO WHATSAPP</button>
+  <p class="ajuda centro">Vai o PDF com uma mensagem curta. Na lista que abrir, escolha o <b>WhatsApp</b>.</p>
+  <button class="btn" data-acao="pdf">${ic('baixar', 32, 2.4)} BAIXAR PDF</button>
   <p class="ajuda centro">Uma página, feita no próprio celular (funciona sem internet).${r.nomeFazenda ? '' : ' Dica: coloque o nome da fazenda em Área do dono → Dados da fazenda.'}</p>
 </main>`,
         async ligar(raiz) {
@@ -162,10 +166,28 @@ window.App = window.App || {};
           U().ao(raiz, '[data-acao=semana-antes]', () => A.ir('resumo', { semana: r.periodo.inicio - 7 * DIA2 }));
           U().ao(raiz, '[data-acao=semana-depois]', () => A.ir('resumo', { semana: r.periodo.inicio + 7 * DIA2 }));
           U().ao(raiz, '[data-perda]', (b) => A.ir('perda', { problemaId: b.dataset.perda, semana: r.periodo.inicio }));
+          // O PDF já começa a ser feito ao abrir a tela: o celular só deixa compartilhar logo depois do toque
+          let feito = null;
+          const fazerPdf = () => (feito = feito || A.pdf.resumo(r).catch((e) => { feito = null; throw e; }));
+          fazerPdf().catch((e) => console.warn(e));
+          U().ao(raiz, '[data-acao=whats]', async (b) => {
+            b.disabled = true;
+            try {
+              const { blob, nome } = await fazerPdf();
+              const como = await A.pdf.compartilhar(blob, nome, A.resumoCalc.mensagem(r), whatsDono);
+              if (como !== 'cancelado') await A.db.definir('resumoLembrete', r.periodo.inicio);
+              if (como === 'whatsapp') A.mostrarAviso('PDF salvo no celular. No WhatsApp, anexe o PDF (clipe).');
+              else if (como === 'compartilhado') A.mostrarAviso('Enviado. A mensagem também foi copiada: se não aparecer, cole.');
+            } catch (e) {
+              console.error(e);
+              A.mostrarAviso('Não deu para enviar. Tente BAIXAR PDF.', 'laranja');
+            }
+            b.disabled = false;
+          });
           U().ao(raiz, '[data-acao=pdf]', async (b) => {
             b.disabled = true;
             try {
-              const { blob, nome } = await A.pdf.resumo(r);
+              const { blob, nome } = await fazerPdf();
               A.pdf.baixar(blob, nome);
               A.mostrarAviso('PDF pronto: ' + nome);
             } catch (e) {

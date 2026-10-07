@@ -265,7 +265,7 @@ window.App = window.App || {};
   ${item('formulas', 'misturar', 'Fórmulas', n(formulas, 'cadastrada', 'cadastradas'))}
   ${item('pastos', 'pasto', 'Pastos e lotes', n(pastos, 'cadastrado', 'cadastrados'))}
   ${item('epoca', 'calendario', 'Época e lotes', 'Meses da troca e o sal de cada lote')}
-  ${item('fazenda', 'casa', 'Dados da fazenda', 'Nome da fazenda (resumo e PDFs)')}
+  ${item('fazenda', 'casa', 'Dados da fazenda', 'Nome da fazenda e WhatsApp do dono')}
   ${item('pessoas', 'pessoa', 'Pessoas', n(pessoas.filter((p) => p.ativo !== false), 'na lista', 'na lista'))}
   ${item('registros', 'mensagem', 'Registros', 'Misturas, chegadas, problemas e estoque')}
   ${item('exemplos', 'ajustes', 'Dados de exemplo', 'Apagar ou recomeçar a demonstração')}
@@ -341,23 +341,32 @@ window.App = window.App || {};
     // DADOS DA FAZENDA: nome (aparece no resumo e nos PDFs)
     async fazenda() {
       const nome = (await A.db.config('nomeFazenda')) || '';
+      const whats = (await A.db.config('whatsDono')) || '';
       return {
-        fala: 'Dados da fazenda. Escreva o nome da fazenda e toque em salvar.',
+        fala: 'Dados da fazenda. Escreva o nome da fazenda e, se quiser, o WhatsApp do dono. Depois toque em salvar.',
         html: `
 <main class="tela">
   ${topo('DADOS DA FAZENDA')}
   <label class="rotulo" for="nome-fazenda">Nome da fazenda</label>
   <input id="nome-fazenda" class="campo" type="text" autocomplete="off" autocapitalize="words" maxlength="40" placeholder="Ex.: Fazenda Boa Vista" value="${esc(nome)}">
   <p class="ajuda">Aparece no Resumo da semana e no nome dos arquivos PDF.</p>
+  <label class="rotulo" for="whats-dono">WhatsApp do dono (opcional)</label>
+  <input id="whats-dono" class="campo" type="tel" inputmode="tel" autocomplete="off" maxlength="20" placeholder="Ex.: (34) 99999-8888" value="${esc(whats)}">
+  <p class="ajuda">Com DDD. Usado quando o celular não consegue mandar o PDF direto: o WhatsApp abre na conversa desse número.</p>
+  <p class="erro" role="alert" hidden>${ic('atencao', 28)} <span>Número com DDD, ex.: (34) 99999-8888.</span></p>
   <button class="btn verde grande" data-acao="salvar">${ic('certo', 44, 3)} SALVAR</button>
 </main>`,
         ligar(r) {
           U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           U().ao(r, '[data-acao=salvar]', async () => {
             const v = r.querySelector('#nome-fazenda').value.trim().replace(/\s+/g, ' ');
+            const w = r.querySelector('#whats-dono').value.trim();
+            const digitos = w.replace(/\D/g, '');
+            if (w && (digitos.length < 10 || digitos.length > 13)) { r.querySelector('.erro').hidden = false; return; }
+            await A.db.definir('whatsDono', w);
             await A.db.definir('nomeFazenda', v);
             await A.ir('dono');
-            A.mostrarAviso(v ? 'Nome da fazenda salvo' : 'Nome da fazenda apagado');
+            A.mostrarAviso('Dados da fazenda salvos');
           });
         },
       };
