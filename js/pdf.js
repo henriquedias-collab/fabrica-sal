@@ -366,6 +366,28 @@ window.App = window.App || {};
     return 'whatsapp';
   }
 
+  // Botões de PDF das telas. fazer() devolve { blob, nome, mensagem }; modo 'whats' = compartilhar com a mensagem,
+  // 'baixar' = salvar no celular. Mostra o aviso certo e devolve o que aconteceu.
+  async function entregar(fazer, modo) {
+    try {
+      const numero = modo === 'whats' ? numeroWhats(await A.db.config('whatsDono')) : '';
+      const { blob, nome, mensagem } = await fazer();
+      if (modo === 'whats') {
+        const como = await compartilhar(blob, nome, mensagem || nome.replace(/\.pdf$/, ''), numero);
+        if (como === 'whatsapp') A.mostrarAviso('PDF salvo no celular. No WhatsApp, anexe o PDF (clipe).');
+        else if (como === 'compartilhado') A.mostrarAviso('Enviado. A mensagem também foi copiada: se não aparecer, cole.');
+        return como;
+      }
+      baixar(blob, nome);
+      A.mostrarAviso('PDF pronto: ' + nome);
+      return 'baixado';
+    } catch (e) {
+      console.error(e);
+      A.mostrarAviso(modo === 'whats' ? 'Não deu para enviar. Tente BAIXAR PDF.' : 'Não deu para fazer o PDF. Tente de novo.', 'laranja');
+      return 'erro';
+    }
+  }
+
   // Número para o link do WhatsApp: só dígitos, com 55 (Brasil) na frente quando faltar. Vazio = sem número.
   function numeroWhats(s) {
     const d = String(s || '').replace(/\D/g, '').replace(/^0+/, '');
@@ -373,5 +395,5 @@ window.App = window.App || {};
     return d.length <= 11 ? '55' + d : d;
   }
 
-  A.pdf = { carregar, logo, nomeArquivo, Relatorio, COR, resumo, baixar, texto, compartilhar, numeroWhats, num, reais, kg, dataHora, SEM };
+  A.pdf = { carregar, logo, nomeArquivo, Relatorio, COR, resumo, baixar, texto, compartilhar, entregar, numeroWhats, num, reais, kg, dataHora, SEM };
 })();

@@ -33,6 +33,12 @@ window.App = window.App || {};
 
   // ---------- pedaços do painel ----------
 
+  // Botões de PDF de uma parte do painel (consumo, compras, problemas): enviar no WhatsApp ou baixar
+  function botoesParte(parte) {
+    return `<div class="botoes-pdf"><button class="btn-pequeno largo" data-pdf="${parte}" data-modo="whats">${ic('whats', 22, 2.2)} WHATSAPP</button>
+    <button class="btn-pequeno largo" data-pdf="${parte}" data-modo="baixar">${ic('baixar', 22, 2.4)} PDF</button></div>`;
+  }
+
   function cartaoProducao(p) {
     const ant = p.anterior;
     const comparar = ant.n ? `${U().q(ant.n, ant.n === 1 ? 'mistura' : 'misturas')} · ${kgQ(ant.kg)} nos 7 dias antes` : 'Nada nos 7 dias antes';
@@ -146,6 +152,7 @@ window.App = window.App || {};
     <p class="ajuda">Sal mandado para o pasto ÷ cabeças ÷ ${dias} ${dias === 1 ? 'dia' : 'dias'}. A meta é a do técnico, cadastrada no lote${ep ? ` (época marcada: ${ep.nome.toLowerCase()})` : ''}; até 10% de diferença conta como dentro.</p>
     ${lista.length ? `<ul class="lista">${lista.map(linha).join('')}</ul>` : '<p>Nenhum pasto cadastrado.</p>'}
     ${kgDeposito ? `<p class="ajuda">Foram para o depósito: ${kgQ(kgDeposito)} (não entram na conta).</p>` : ''}
+    ${botoesParte('consumo')}
   </section>`;
   }
 
@@ -166,6 +173,7 @@ window.App = window.App || {};
     ${comPreco.length ? `<div class="linha-dupla total-compra"><span>Total estimado${semPreco ? ' (só os com preço)' : ''}</span>${reaisQ(total)}</div>` : ''}`
     : `<p>${selo('verde', 'NADA PARA COMPRAR')}</p>`}
     <p class="ajuda">Para ${C().DIAS_COMPRA} dias de produção, mais o estoque mínimo, menos o que já tem.</p>
+    ${botoesParte('compras')}
   </section>`;
   }
 
@@ -181,6 +189,7 @@ window.App = window.App || {};
       ${p.audio ? `<audio controls preload="none" data-audio="${esc(p.id)}"></audio>` : ''}
       <button class="btn" data-resolver="${esc(p.id)}">${ic('certo', 30, 3)} RESOLVIDO</button>
     </div>`).join('') : `<p>${selo('verde', 'NENHUM PROBLEMA ABERTO')}</p>`}
+    ${lista.length ? botoesParte('problemas') : ''}
   </section>`;
   }
 
@@ -191,7 +200,7 @@ window.App = window.App || {};
       const [misturas, insumos, pastos, problemas, contagens, formulas] = await Promise.all(
         ['misturas', 'insumos', 'pastos', 'problemas', 'contagens', 'formulas'].map((x) => A.db.todos(x)));
       // Época marcada (usada na meta de cada lote) e aviso de troca (só no mês marcado; o app nunca troca sozinho)
-      const [epoca, meses] = await Promise.all([A.db.config('epocaAtual'), A.db.config('mesesEpoca')]);
+      const [epoca, meses, nomeFazenda] = await Promise.all([A.db.config('epocaAtual'), A.db.config('mesesEpoca'), A.db.config('nomeFazenda')]);
       const d = C().painel({ misturas, insumos, pastos, problemas, contagens, formulas, epoca });
       const abertos = d.problemasAbertos;
       const urgentes = d.estoque.filter((e) => e.nivel === 'vermelho');
@@ -220,10 +229,19 @@ window.App = window.App || {};
   ${cartaoConsumo(d.consumoPastos, d.kgDeposito, d.dias, ep)}
   ${cartaoCompras(d.compras)}
   ${cartaoProblemas(abertos)}
+  <button class="btn verde grande" data-pdf="painel" data-modo="whats">${ic('whats', 44, 2.2)} ENVIAR NO WHATSAPP</button>
+  <button class="btn" data-pdf="painel" data-modo="baixar">${ic('baixar', 32, 2.4)} PDF DO PAINEL</button>
+  <p class="ajuda centro">O painel inteiro em PDF. Consumo, compras e problemas também têm PDF só deles.</p>
 </main>`,
         ligar(r) {
           U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           U().ao(r, '[data-acao=contar]', () => A.ir('contarEstoque'));
+          A.pdf.carregar().catch(() => {}); // deixa o gerador de PDF pronto (o celular só compartilha logo depois do toque)
+          U().ao(r, '[data-pdf]', async (b) => {
+            b.disabled = true;
+            await A.pdf.entregar(() => A.pdfRelatorios.painel(d, { parte: b.dataset.pdf, nomeFazenda, epoca }), b.dataset.modo);
+            b.disabled = false;
+          });
           U().ao(r, '[data-acao=ver-epoca]', () => A.ir('epoca'));
           U().ao(r, '[data-acao=precos]', () => A.ir('precos', { volta: 'painel' }));
           U().ao(r, '[data-acao=ver-problemas]', () => r.querySelector('#problemas').scrollIntoView({ behavior: 'smooth' }));

@@ -285,7 +285,7 @@
     return linhas.join('\n');
   }
 
-  const api = { calcular, historico, mensagem, mensagemHistorico, inicioDaSemana, DIA };
+  const api = { calcular, historico, mensagem, mensagemHistorico, custoMistura: custo, inicioDaSemana, DIA };
   if (raiz.App) raiz.App.resumoCalc = api; // no app (navegador)
   raiz.CochoResumo = api; // fora do app (ex.: Google Apps Script)
 })(typeof window !== 'undefined' ? (window.App = window.App || {}, window) : this);

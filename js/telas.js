@@ -1044,6 +1044,8 @@ window.App = window.App || {};
         html: `
 <main class="tela">
   <div class="topo">${btnVoltar()}<h1 class="titulo">REGISTROS</h1>${btnFalar()}</div>
+  <div class="botoes-pdf topo-pdf"><span>Tudo em PDF:</span><button class="btn-pequeno largo" data-pdf="registros" data-modo="whats">${ic('whats', 22, 2.2)} WHATSAPP</button>
+    <button class="btn-pequeno largo" data-pdf="registros" data-modo="baixar">${ic('baixar', 22, 2.4)} PDF</button></div>
   ${blocoAndamento}
   <section class="secao">
     <h2>Misturas: ${misturas.length}</h2>
@@ -1084,6 +1086,12 @@ window.App = window.App || {};
   </section>` : ''}
 </main>`,
         ligar(r) {
+          A.pdf.carregar().catch(() => {});
+          ao(r, '[data-pdf]', async (b) => {
+            b.disabled = true;
+            await A.pdf.entregar(() => A.pdfRelatorios.registros(), b.dataset.modo);
+            b.disabled = false;
+          });
           ao(r, '[data-preco]', (b) => A.ir('precoCompra', { entradaId: b.dataset.preco, volta: 'registros' }));
           ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           ao(r, '[data-acao=encerrar]', async (b) => {

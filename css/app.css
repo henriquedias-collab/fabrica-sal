@@ -826,3 +826,9 @@ h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .seca
 /* Aviso de chegadas sem preço pago (Área do dono): botão amarelo */
 .alerta-preco { width: 100%; text-align: left; font: inherit; cursor: pointer; box-shadow: 0 5px 0 var(--laranja); margin: 10px 0 5px; }
 .alerta-preco span { display: block; }
+
+/* Botões pequenos de PDF (partes do painel e registros): WhatsApp ou baixar */
+.botoes-pdf { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.botoes-pdf .btn-pequeno { gap: 6px; height: 52px; }
+.botoes-pdf.topo-pdf { margin: 0 0 12px; }
+.botoes-pdf.topo-pdf span { margin-right: auto; color: var(--tinta-2); font-size: 17px; }
