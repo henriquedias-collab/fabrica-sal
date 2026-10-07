@@ -91,6 +91,29 @@ window.App = window.App || {};
     return `<div class="foto-insumo" style="${estilo}">${ic('saco', 76, 1.6)}<span>${esc(ins.nome)}</span></div>`;
   }
 
+  // ---------- números: valor em destaque (negrito) e a unidade mais leve ----------
+  // q('1.500', 'kg') -> <b>1.500</b> <small>kg</small>. Separador de milhar com ponto e decimal com vírgula.
+  function q(valor, un) {
+    return `<span class="q"><b>${valor}</b>${un ? ` <small>${un}</small>` : ''}</span>`;
+  }
+  const kgQ = (kg) => q(C().numero(kg), 'kg');
+  function reaisTexto(v, casas) {
+    const c = casas === undefined ? 2 : casas;
+    return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c });
+  }
+  // R$ 4,36 -> <small>R$</small> <b>4,36</b>; sufixo opcional ("/kg", "/cabeça/dia")
+  function reaisQ(v, sufixo, casas) {
+    return `<span class="q"><small>R$</small> <b>${reaisTexto(v, casas)}</b>${sufixo ? `<small>${sufixo}</small>` : ''}</span>`;
+  }
+  // "3 sacos + 10 kg" com os números em destaque
+  function qtdQ(kg, ins) {
+    const x = C().qtd(Math.max(0, kg), ins);
+    const partes = [];
+    if (x.n) partes.push(q(x.n, C().nomeUnidade(x.n, ins)));
+    if (x.resto || !x.n) partes.push(kgQ(x.resto));
+    return partes.join(' + ');
+  }
+
   function porId(lista) {
     const m = {};
     lista.forEach((x) => { m[x.id] = x; });
@@ -135,6 +158,10 @@ window.App = window.App || {};
   // Começa a mistura no tamanho escolhido: recalcula os kg na proporção da receita e confere o estoque.
   // Só fica guardada no celular depois do 1º saco (antes disso, voltar não deixa rastro).
   function iniciarMistura(f, tamanhoKg, mapa) {
+    // Limite por insumo: a proporção é a mesma em qualquer tamanho, mas confere de novo aqui
+    // (ex.: o limite do insumo mudou depois que a fórmula foi salva). Só passa o que o dono confirmou.
+    const acima = C().limitesNaoConfirmados(f, mapa);
+    if (acima.length) return A.ir('limite', { formula: f, violacoes: acima });
     const escalada = C().escalarFormula(f, tamanhoKg);
     const faltas = C().faltas(escalada, mapa);
     A.estado.mistura = C().novaMistura({
@@ -309,7 +336,7 @@ window.App = window.App || {};
         return `
   <div class="alerta ${a.nivel}">
     ${ic(a.nivel === 'vermelho' ? 'problema' : 'atencao', 48)}
-    <div><b>${esc(titulo)}</b><span>Restam ${esc(C().qtdTexto(a.insumo.estoqueKg, a.insumo))}</span></div>
+    <div><b>${esc(titulo)}</b><span>Restam ${qtdQ(a.insumo.estoqueKg, a.insumo)}</span></div>
   </div>`;
       };
       const falaAlertas = alertas.map((a) => {
@@ -422,6 +449,45 @@ window.App = window.App || {};
         ligar(r) {
           ao(r, '[data-acao=voltar]', () => A.ir('escolher'));
           ao(r, '[data-tamanho]', (b) => iniciarMistura(f, Number(b.dataset.tamanho), mapa));
+        },
+      };
+    },
+
+    // LIMITE: o sal passa do máximo de algum insumo (ex.: ureia) e o dono não confirmou. O operador não mistura.
+    async limite({ formula, violacoes }) {
+      if (!formula) return A.telas.escolher();
+      return {
+        fala: `Pare. Este sal, ${formula.nome}, passa do limite. ` +
+          violacoes.map((v) => `${v.nome}: ${C().numero(v.pct)} por cento, o limite é ${C().numero(v.max)} por cento.`).join(' ') +
+          ' Não faça esta mistura. Toque em avisar o dono.',
+        html: `
+<main class="tela centro">
+  <div class="topo">${btnVoltar()}<span class="espaco"></span>${btnFalar()}</div>
+  <div class="circulo-alerta">${ic('problema', 72, 2.2)}</div>
+  <h1 class="titulo-falta">NÃO MISTURE</h1>
+  <p class="instrucao"><b>${esc(formula.nome.toUpperCase())}</b> passa do limite:</p>
+  ${violacoes.map((v) => `<div class="alerta vermelho limite-linha">${ic('atencao', 36, 2.4)}<div>
+    <b>${esc(v.nome.toUpperCase())}: ${C().numero(v.pct)}%</b><span>Limite: ${C().numero(v.max)}%</span></div></div>`).join('')}
+  <p class="ajuda centro">Só o dono pode corrigir a fórmula (ou confirmar com o técnico).</p>
+  <div class="espaco"></div>
+  <button class="btn escuro grande" data-acao="avisar" style="font-size:28px">${ic('mensagem', 40)} AVISAR O DONO</button>
+  <button class="btn" data-acao="voltar2">${ic('voltar', 30, 2.6)} VOLTAR</button>
+</main>`,
+        ligar(r) {
+          ao(r, '[data-acao=voltar]', () => A.ir('escolher'));
+          ao(r, '[data-acao=voltar2]', () => A.ir('escolher'));
+          ao(r, '[data-acao=avisar]', async (b) => {
+            b.disabled = true;
+            const p = A.estado.pessoa;
+            await A.db.salvar('problemas', {
+              id: A.db.novoId('problema'), tipo: 'limite-insumo', quando: new Date().toISOString(),
+              formulaId: formula.id, formulaNome: formula.nome, limites: violacoes,
+              pessoaId: p.id, pessoaNome: p.nome, exemplo: false,
+            });
+            await A.ir('inicio');
+            A.mostrarAviso('Aviso guardado para o dono');
+            A.voz.falar('Pronto. O aviso ficou guardado para o dono.');
+          });
         },
       };
     },
@@ -910,7 +976,7 @@ window.App = window.App || {};
     <h2>Misturas: ${misturas.length}</h2>
     <p>${feitas} ${feitas === 1 ? 'feita' : 'feitas'} no app · ${exemplos} de exemplo</p>
     <ul class="lista">
-      ${misturas.slice(0, 10).map((m) => `<li><b>${esc(C().quando(m.fim))}</b> · ${esc(m.formulaNome)} · ${C().numero(m.totalKg)} kg<br>
+      ${misturas.slice(0, 10).map((m) => `<li><b>${esc(C().quando(m.fim))}</b> · ${esc(m.formulaNome)} · ${kgQ(m.totalKg)}<br>
         ${esc(textoDestino(m.destino))} · ${esc(m.pessoaNome || '—')}${m.avisoFalta ? ' · <span class="etiqueta">feita com aviso de falta</span>' : ''}${m.destino && m.destino.foraDoPlano ? ` <span class="etiqueta laranja">${ic('atencao', 16)} lote usava ${esc(m.destino.salDoLoteNome || 'outro sal')} ${m.destino.epoca === 'aguas' ? 'nas águas' : 'na seca'}</span>` : ''}${incompleta(m)}${etq(m)}</li>`).join('') || '<li>Nenhuma.</li>'}
     </ul>
   </section>
@@ -932,7 +998,7 @@ window.App = window.App || {};
   <section class="secao">
     <h2>Estoque estimado</h2>
     <ul class="lista">
-      ${insumos.map((i) => `<li><b>${esc(i.nome)}</b>: ${C().numero(i.estoqueKg)} kg (${esc(C().qtdTexto(i.estoqueKg, i))})${etq(i)}</li>`).join('') || '<li>Nenhum insumo.</li>'}
+      ${insumos.map((i) => `<li><b>${esc(i.nome)}</b>: ${kgQ(i.estoqueKg)} (${qtdQ(i.estoqueKg, i)})${etq(i)}</li>`).join('') || '<li>Nenhum insumo.</li>'}
     </ul>
   </section>
   ${contagens.length ? `
@@ -980,10 +1046,14 @@ window.App = window.App || {};
     'saco-rasgado': 'Saco rasgado',
     molhado: 'Molhado',
     'maquina-parada': 'Máquina parada',
+    'limite-insumo': 'Sal passa do limite',
   };
 
   function descreverProblema(p) {
     const tipo = NOMES_PROBLEMA[p.tipo] || 'Problema';
+    if (p.limites && p.limites.length) {
+      return `${tipo}: ${p.formulaNome || ''} (${p.limites.map((v) => C().textoLimite(v)).join('; ')})`;
+    }
     if (p.faltas && p.faltas.length) {
       return `${tipo}: ${p.faltas.map((f) => f.nome).join(', ')}${p.formulaNome ? ' (para ' + p.formulaNome + ')' : ''}`;
     }
@@ -1011,5 +1081,5 @@ window.App = window.App || {};
     });
   }
 
-  A.ui = { esc, ic, marca, desenhoCocho, seloTipo, seloEpoca, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
+  A.ui = { esc, ic, q, kgQ, reaisQ, reaisTexto, qtdQ, marca, desenhoCocho, seloTipo, seloEpoca, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
 })();

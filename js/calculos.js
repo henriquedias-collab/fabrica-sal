@@ -130,6 +130,31 @@ window.App = window.App || {};
       anterior: { n: anteriores.length, kg: somaKg(anteriores) },
     };
 
+    // Custo (preços de hoje dos insumos): das misturas da semana e de cada fórmula, com comparação ao sal pronto
+    const insPorId = {};
+    dados.insumos.forEach((i) => { insPorId[i.id] = i; });
+    const custoMistura = (m) => custoItens(m.itens, insPorId);
+    const semanaCustos = doPeriodo.map(custoMistura);
+    const semPrecoSemana = [...new Set([].concat(...semanaCustos.map((c) => c.semPreco)))];
+    const kg30 = kgPorFormula(dados.misturas, 30, agora);
+    const custo = {
+      semana: semPrecoSemana.length ? null : semanaCustos.reduce((s, c) => s + c.total, 0),
+      semPrecoSemana,
+      formulas: (dados.formulas || [])
+        .filter((f) => kg30[f.id] || doPeriodo.some((m) => m.formulaId === f.id))
+        .sort((a, b) => (a.numero || 0) - (b.numero || 0))
+        .map((f) => {
+          const c = custoItens(f.itens, insPorId);
+          const cp = comparaPronto(f, insPorId, dados.misturas, agora);
+          const tamanhoKg = tamanhoPadrao(f);
+          return {
+            formula: f, porKg: c.porKg, semPreco: c.semPreco, tamanhoKg,
+            batida: c.porKg !== null ? c.porKg * tamanhoKg : null,
+            prontoKg: cp.prontoKg, kg30: cp.kg30, economiaMes: cp.economiaMes,
+          };
+        }),
+    };
+
     // Previsto x real: previsto = o que as fórmulas pediram; diferença = o que as contagens acharam a menos (+) ou a mais (−)
     const previsto = {};
     doPeriodo.forEach((m) => m.itens.forEach((it) => { previsto[it.insumoId] = (previsto[it.insumoId] || 0) + it.kg; }));
@@ -160,18 +185,32 @@ window.App = window.App || {};
     const primeira = dados.misturas.reduce((min, m) => Math.min(min, t(m.fim)), Infinity);
     const dias = primeira === Infinity ? DIAS_PAINEL : Math.min(DIAS_PAINEL, Math.max(1, Math.ceil((agora - primeira) / DIA)));
     const kgPasto = {};
+    const custoPasto = {}; // R$ mandados ao pasto (null se algum insumo está sem preço)
     let kgDeposito = 0;
     doPeriodo.forEach((m) => {
-      if (m.destino && m.destino.tipo === 'pasto') kgPasto[m.destino.id] = (kgPasto[m.destino.id] || 0) + (m.totalKg || 0);
-      else if (m.destino && m.destino.tipo === 'deposito') kgDeposito += m.totalKg || 0;
+      if (m.destino && m.destino.tipo === 'pasto') {
+        const id = m.destino.id;
+        kgPasto[id] = (kgPasto[id] || 0) + (m.totalKg || 0);
+        const c = custoMistura(m);
+        custoPasto[id] = custoPasto[id] === null || c.total === null ? null : (custoPasto[id] || 0) + c.total;
+      } else if (m.destino && m.destino.tipo === 'deposito') kgDeposito += m.totalKg || 0;
     });
+    // Meta do técnico por lote e época (g/cabeça/dia): dentro de ±10% = verde; fora = amarelo (acima ou abaixo)
     const consumoPastos = dados.pastos
       .slice()
       .sort((a, b) => (a.numero || 0) - (b.numero || 0))
       .map((p) => {
         const kg = kgPasto[p.id] || 0;
         const gramas = p.cabecas > 0 && kg > 0 ? Math.round((kg * 1000) / p.cabecas / dias) : null;
-        return { pasto: p, kg, gramas };
+        const custoCabDia = p.cabecas > 0 && kg > 0 && custoPasto[p.id] !== null && custoPasto[p.id] !== undefined
+          ? custoPasto[p.id] / p.cabecas / dias : null;
+        const meta = dados.epoca === 'seca' ? p.metaSecaG : dados.epoca === 'aguas' ? p.metaAguasG : null;
+        let nivelMeta = null;
+        if (meta > 0 && gramas !== null) {
+          const dif = gramas / meta - 1;
+          nivelMeta = Math.abs(dif) <= 0.1 ? 'dentro' : dif > 0 ? 'acima' : 'abaixo';
+        }
+        return { pasto: p, kg, gramas, custoCabDia, semPreco: kg > 0 && custoPasto[p.id] === null, meta: meta > 0 ? meta : null, nivelMeta };
       });
 
     // Lista de compras: o que falta para 30 dias de produção + o estoque mínimo, em sacos inteiros
@@ -193,7 +232,7 @@ window.App = window.App || {};
       .filter((p) => !p.resolvidoEm)
       .sort((a, b) => b.quando.localeCompare(a.quando));
 
-    return { inicio, agora, dias, producao, previstoReal, estoque, consumoPastos, kgDeposito, compras, problemasAbertos };
+    return { inicio, agora, dias, producao, custo, previstoReal, estoque, consumoPastos, kgDeposito, compras, problemasAbertos };
   }
 
   // O que falta no estoque para fazer uma batida desta fórmula
@@ -229,6 +268,76 @@ window.App = window.App || {};
       exemplo: !!exemplo,
     };
   }
+
+  // ---------- custo (etapa 4.3) ----------
+  // Preço do kg de um insumo: preço do saco ÷ kg do saco (a granel, o preço já é por kg). Sem preço = null.
+  function precoKg(ins) {
+    if (!ins || !(ins.precoPorUnidade > 0)) return null;
+    const { kgPor } = unidade(ins);
+    return kgPor ? ins.precoPorUnidade / kgPor : ins.precoPorUnidade;
+  }
+
+  // Custo de uma lista de itens ({ insumoId, kg }). Se faltar preço de algum insumo, total e porKg ficam null
+  // e semPreco lista os nomes (a tela mostra "sem preço", nunca zero ou conta errada).
+  function custoItens(itens, insumosPorId) {
+    let total = 0;
+    const semPreco = [];
+    let kg = 0;
+    itens.forEach((it) => {
+      kg += it.kg || 0;
+      const ins = insumosPorId[it.insumoId];
+      const p = precoKg(ins);
+      if (p === null) { if (!semPreco.includes(ins ? ins.nome : '?')) semPreco.push(ins ? ins.nome : '?'); } else total += (it.kg || 0) * p;
+    });
+    const ok = !semPreco.length;
+    return { total: ok ? total : null, porKg: ok && kg > 0 ? total / kg : null, semPreco, kg };
+  }
+
+  // Sal pronto para comparar (opcional na fórmula): R$/kg ou null
+  function precoProntoKg(f) {
+    return f && f.prontoPrecoSaco > 0 && f.prontoKgSaco > 0 ? f.prontoPrecoSaco / f.prontoKgSaco : null;
+  }
+
+  // kg feitos de cada fórmula nos últimos N dias (para a economia no mês)
+  function kgPorFormula(misturas, dias, agora) {
+    const desde = (agora || Date.now()) - dias * DIA;
+    const kg = {};
+    misturas.forEach((m) => { if (new Date(m.fim).getTime() >= desde) kg[m.formulaId] = (kg[m.formulaId] || 0) + (m.totalKg || 0); });
+    return kg;
+  }
+
+  // Comparação da fórmula com o sal pronto: { fabKg, prontoKg, kg30, economiaMes } (valores null quando não dá para calcular)
+  function comparaPronto(f, insumosPorId, misturas, agora) {
+    const fabKg = custoItens(f.itens, insumosPorId).porKg;
+    const prontoKg = precoProntoKg(f);
+    const kg30 = kgPorFormula(misturas || [], 30, agora)[f.id] || 0;
+    const economiaMes = fabKg !== null && prontoKg !== null ? kg30 * (prontoKg - fabKg) : null;
+    return { fabKg, prontoKg, kg30, economiaMes };
+  }
+
+  // ---------- limite máximo por insumo (etapa 4.4) ----------
+  // insumo.maxPct = máximo na mistura (%), preenchido pelo dono conforme o técnico. Sem valor = não confere.
+  // Como a batida mantém a proporção, a % é a mesma em qualquer tamanho.
+  function passaLimite(itens, insumosPorId) {
+    const base = itens.reduce((s, it) => s + (it.kg > 0 ? it.kg : 0), 0);
+    if (!base) return [];
+    return itens.map((it) => {
+      const ins = insumosPorId[it.insumoId];
+      if (!ins || !(ins.maxPct > 0) || !(it.kg > 0)) return null;
+      const pct = Math.round((it.kg / base) * 1000) / 10;
+      return pct > ins.maxPct ? { insumoId: ins.id, nome: ins.nome, pct, max: ins.maxPct } : null;
+    }).filter(Boolean);
+  }
+
+  // Limites estourados que o dono NÃO confirmou ao salvar a fórmula (ex.: o limite do insumo mudou depois)
+  function limitesNaoConfirmados(f, insumosPorId) {
+    const conf = f.limitesConfirmados || [];
+    return passaLimite(f.itens, insumosPorId).filter((v) =>
+      !conf.some((c) => c.insumoId === v.insumoId && c.max === v.max && Math.abs(c.pct - v.pct) < 0.05));
+  }
+
+  // "Ureia: 18% — limite 10%"
+  const textoLimite = (v) => `${v.nome}: ${numero(v.pct)}% — limite ${numero(v.max)}%`;
 
   // ---------- tipo, época e lote ----------
   // formula.tipo: 'mineral' | 'proteinado' | 'outro' (sem tipo = fórmula antiga, ainda não marcada)
@@ -487,6 +596,7 @@ window.App = window.App || {};
   App.calc = {
     DIA, DIAS_PAINEL, DIAS_COMPRA, UNIDADES, numero, unidade, nomeUnidade, qtd, qtdTexto, qtdFala, consumoDiario,
     situacaoEstoque, alertasEstoque, painel, faltas,
+    precoKg, custoItens, precoProntoKg, kgPorFormula, comparaPronto, passaLimite, limitesNaoConfirmados, textoLimite,
     TIPOS, EPOCAS, MESES, epocaDaFormula, salDoLote, avisoTrocaEpoca,
     baseKg, tamanhos, tamanhoPadrao, escalarFormula,
     montarMistura, novaMistura, progresso, totalColocadoKg, gravarAndamento, carregarAndamento, apagarAndamento,

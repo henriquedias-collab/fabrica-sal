@@ -11,7 +11,7 @@ window.App = window.App || {};
   };
 
   // Telas da Área do dono: só abrem depois da senha. Ao voltar para as telas do operador, trava de novo.
-  const TELAS_DONO = ['dono', 'registros', 'insumos', 'insumo', 'formulas', 'formula', 'pastos', 'pasto', 'pessoas', 'exemplos', 'trocarSenha', 'exportarCopia', 'importarCopia', 'painel', 'contarEstoque', 'epoca'];
+  const TELAS_DONO = ['dono', 'registros', 'insumos', 'insumo', 'formulas', 'formula', 'pastos', 'pasto', 'pessoas', 'exemplos', 'trocarSenha', 'exportarCopia', 'importarCopia', 'painel', 'contarEstoque', 'epoca', 'precos'];
 
   // Mostra uma tela
   A.ir = async function (nome, params) {
@@ -27,7 +27,7 @@ window.App = window.App || {};
     } else if (!doDono && nome !== 'senha') {
       A.estado.donoLiberado = false;
     }
-    if (['inicio', 'escolher', 'tamanho', 'aviso', 'passo', 'destino', 'outroSal', 'pronta', 'sairMistura', 'chegada', 'chegadaContar', 'chegadaPronta', 'problema', 'problemaInsumo', 'problemaDetalhe', 'problemaPronto'].includes(nome) && !A.estado.pessoa) nome = 'quem';
+    if (['inicio', 'escolher', 'tamanho', 'limite', 'aviso', 'passo', 'destino', 'outroSal', 'pronta', 'sairMistura', 'chegada', 'chegadaContar', 'chegadaPronta', 'problema', 'problemaInsumo', 'problemaDetalhe', 'problemaPronto'].includes(nome) && !A.estado.pessoa) nome = 'quem';
     if (['aviso', 'passo', 'destino', 'outroSal', 'sairMistura'].includes(nome) && !A.estado.mistura) nome = 'inicio';
     const tela = await A.telas[nome](params || {});
     const raiz = document.getElementById('app');

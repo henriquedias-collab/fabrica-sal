@@ -12,6 +12,19 @@
   font-weight: 700;
   font-display: swap;
 }
+/* Figtree: texto e números (guardada no app para funcionar sem internet; licença SIL OFL) */
+@font-face {
+  font-family: "Figtree";
+  src: url(../fontes/figtree-400.woff2) format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Figtree";
+  src: url(../fontes/figtree-700.woff2) format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
 
 /* Cores com significado fixo: verde = certo, amarelo = atenção (sempre com triângulo), vermelho = problema.
    Terra é a cor da marca (botão principal, títulos, alto-falante), nunca um alerta.
@@ -48,7 +61,10 @@ html, body {
   margin: 0;
   background: var(--fundo);
   color: var(--tinta);
-  font-family: 'Atkinson Hyperlegible', 'Segoe UI', sans-serif;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  /* Algarismos alinhados (colunas de kg e sacos certinhas) e zero sem traço */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'zero' 0;
   -webkit-tap-highlight-color: transparent;
 }
 body.verde { background: var(--fundo); }
@@ -718,3 +734,32 @@ select.campo { font-size: 22px; padding: 0 12px; }
 .sal-lote { display: inline-flex; align-items: center; gap: 4px; }
 .sal-lote b { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--cor-sal); color: #fff; font-size: 14px; }
 .alerta-troca { box-shadow: 0 5px 0 var(--laranja); }
+
+/* ---------- Custo, limite e meta (etapa 4.3 e 4.4) ---------- */
+/* Número em destaque e unidade mais leve: "500" em negrito, "kg" menor */
+.q { white-space: nowrap; }
+.q b { font-weight: 700; }
+.q small { font-size: 0.82em; font-weight: 400; color: var(--tinta-2); }
+.alerta .q small, .numeros-terra .q small, .btn .q small { color: inherit; opacity: 0.85; }
+.numero-grande .valor small { font-size: 0.45em; font-weight: 400; }
+.positivo { color: var(--verde-escuro); }
+.negativo { color: var(--vermelho-texto); }
+.custo-semana { padding: 8px 0 10px; border-bottom: 2px solid var(--neutro); margin-bottom: 8px; font-size: 18px; }
+.custo-semana b .q b { font-size: 22px; }
+.custo-formula { background: var(--cartao); border: 3px solid var(--borda); border-radius: 20px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.custo-formula p { margin: 0; font-size: 18px; }
+.alerta-limite { align-items: flex-start; }
+.alerta-limite div { display: flex; flex-direction: column; gap: 4px; }
+.limite-linha { width: 100%; }
+.item-pasto-col { display: flex; flex-direction: column; gap: 6px; }
+.extras-pasto { padding-left: 62px; }
+.extras-pasto .detalhe { font-size: 15px; }
+
+/* ---------- Fontes: títulos com a Atkinson Hyperlegible (a de antes); texto e números com a Figtree ---------- */
+h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .secao h2, .cartao-epoca h2 {
+  font-family: 'Atkinson Hyperlegible', 'Segoe UI', sans-serif;
+}
+/* A unidade fica na mesma linha do número, mesmo dentro de textos pequenos que viram bloco */
+.q, .q b, .q small, .item-texto small .q small, .g-cabeca .q small { display: inline; }
+.item-texto small .q { white-space: nowrap; }
+.item-texto small b { display: inline; }

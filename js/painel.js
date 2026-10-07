@@ -20,9 +20,11 @@ window.App = window.App || {};
     return `<span class="selo ${nivel}">${ic(ICONE_NIVEL[nivel], 18, 2.8)}${texto}</span>`;
   }
 
-  // 5500 -> "5.500"
+  // Números: valor em negrito e unidade mais leve (ajudantes em telas.js)
   const n = (x) => C().numero(x);
-  const reais = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const kgQ = (kg) => U().kgQ(kg);
+  const qtdQ = (kg, ins) => U().qtdQ(kg, ins);
+  const reaisQ = (v, sufixo, casas) => U().reaisQ(v, sufixo, casas);
 
   function dataCurta(ms) {
     const d = new Date(ms);
@@ -33,17 +35,38 @@ window.App = window.App || {};
 
   function cartaoProducao(p) {
     const ant = p.anterior;
-    const comparar = ant.n ? `${ant.n} ${ant.n === 1 ? 'mistura' : 'misturas'} · ${n(ant.kg)} kg nos 7 dias antes` : 'Nada nos 7 dias antes';
+    const comparar = ant.n ? `${U().q(ant.n, ant.n === 1 ? 'mistura' : 'misturas')} · ${kgQ(ant.kg)} nos 7 dias antes` : 'Nada nos 7 dias antes';
     return `
   <section class="secao" aria-labelledby="t-producao">
     <h2 id="t-producao">Produção</h2>
     <div class="grade-2 numeros-terra">
       <div class="numero-grande"><span class="valor">${p.n}</span><span class="legenda">${p.n === 1 ? 'mistura' : 'misturas'}</span></div>
-      <div class="numero-grande"><span class="valor">${n(p.kg)}</span><span class="legenda">kg de sal feitos</span></div>
+      <div class="numero-grande"><span class="valor">${n(p.kg)}<small> kg</small></span><span class="legenda">de sal feitos</span></div>
     </div>
     ${p.porFormula.length ? `<ul class="lista">${p.porFormula.map((f) => `
-      <li class="linha-dupla"><span>${esc(f.nome)}</span><b>${f.n} × · ${n(f.kg)} kg</b></li>`).join('')}</ul>` : '<p>Nenhuma mistura nesses 7 dias.</p>'}
+      <li class="linha-dupla"><span>${esc(f.nome)}</span><span>${U().q(f.n, '×')} · ${kgQ(f.kg)}</span></li>`).join('')}</ul>` : '<p>Nenhuma mistura nesses 7 dias.</p>'}
     <p class="ajuda">${comparar}</p>
+  </section>`;
+  }
+
+  // CUSTO: insumos usados na semana e, por fórmula, custo da batida, R$/kg e comparação com o sal pronto
+  function cartaoCusto(c) {
+    const semPreco = (nomes) => `<span class="selo sem">${ic('menos', 18, 2.8)}SEM PREÇO</span> <span class="detalhe">${esc(nomes.join(', '))}</span>`;
+    const linha = (x) => `
+      <li class="item-painel">
+        <div class="linha-dupla"><b>${esc(x.formula.nome)}</b>${x.porKg !== null ? reaisQ(x.porKg, '/kg') : ''}</div>
+        ${x.porKg === null ? `<span>${semPreco(x.semPreco)}</span>`
+          : `<span class="detalhe">Batida de ${kgQ(x.tamanhoKg)}: ${reaisQ(x.batida)}</span>`}
+        ${x.prontoKg !== null ? `<span class="detalhe">Fabricando: ${x.porKg !== null ? reaisQ(x.porKg, '/kg') : 'sem preço'} · Pronto: ${reaisQ(x.prontoKg, '/kg')}</span>
+        ${x.economiaMes !== null ? `<span class="detalhe">${x.economiaMes >= 0 ? 'Economia' : 'Gasto a mais'} no mês (${kgQ(x.kg30)} feitos em 30 dias): <b class="${x.economiaMes >= 0 ? 'positivo' : 'negativo'}">${reaisQ(Math.abs(x.economiaMes), '', 0)}</b></span>` : ''}` : ''}
+      </li>`;
+    return `
+  <section class="secao" aria-labelledby="t-custo">
+    <h2 id="t-custo">Custo</h2>
+    <p class="ajuda">Só os insumos, pelos preços de hoje do cadastro (sem frete, mão de obra nem perdas).</p>
+    <div class="linha-dupla custo-semana"><span>Insumos usados nos 7 dias</span>${c.semana !== null ? `<b>${reaisQ(c.semana, '', 0)}</b>` : semPreco(c.semPrecoSemana)}</div>
+    ${c.formulas.length ? `<ul class="lista">${c.formulas.map(linha).join('')}</ul>` : '<p>Nenhuma mistura nos últimos 30 dias.</p>'}
+    <button class="btn" data-acao="precos">${ic('saco', 30, 2)} ATUALIZAR PREÇOS</button>
   </section>`;
   }
 
@@ -58,7 +81,7 @@ window.App = window.App || {};
       return `
       <li class="item-painel">
         <div class="linha-dupla"><b>${esc(ins.nome)}</b>${resultado}</div>
-        <span class="detalhe">Previsto: ${n(x.previstoKg)} kg (${esc(C().qtdTexto(x.previstoKg, ins))})${x.contado ? ` · Real: ${n(x.realKg)} kg` : ''}</span>
+        <span class="detalhe">Previsto: ${kgQ(x.previstoKg)} (${qtdQ(x.previstoKg, ins)})${x.contado ? ` · Real: ${kgQ(x.realKg)}` : ''}</span>
       </li>`;
     };
     const algumSem = lista.some((x) => x.nivel === 'sem');
@@ -82,37 +105,47 @@ window.App = window.App || {};
       return `
       <li class="item-painel">
         <div class="linha-dupla"><b>${esc(ins.nome)}</b>${selo(nv, esc(texto.toUpperCase()))}</div>
-        <span class="detalhe">Tem ${esc(C().qtdTexto(ins.estoqueKg, ins))}${ins.estoqueMinimoKg ? ` · mínimo ${esc(C().qtdTexto(ins.estoqueMinimoKg, ins))}` : ''}</span>
+        <span class="detalhe">Tem ${qtdQ(ins.estoqueKg, ins)}${ins.estoqueMinimoKg ? ` · mínimo ${qtdQ(ins.estoqueMinimoKg, ins)}` : ''}</span>
         <div class="barra" aria-hidden="true"><span class="${nv}" style="width:${Math.round(largura)}%"></span></div>
       </li>`;
     };
     return `
   <section class="secao" aria-labelledby="t-estoque">
     <h2 id="t-estoque">Estoque em dias</h2>
-    <p class="ajuda">Pelo consumo médio dos últimos 14 dias. Vermelho: menos de 3 dias. Laranja: menos de 7 dias ou abaixo do mínimo.</p>
+    <p class="ajuda">Pelo consumo médio dos últimos 14 dias. Vermelho: menos de 3 dias. Amarelo: menos de 7 dias ou abaixo do mínimo.</p>
     ${lista.length ? `<ul class="lista">${lista.map(linha).join('')}</ul>` : '<p>Nenhum insumo cadastrado.</p>'}
   </section>`;
   }
 
-  function cartaoConsumo(lista, kgDeposito, dias) {
-    const linha = ({ pasto: p, kg, gramas }) => {
+  // CONSUMO POR CABEÇA: g/cabeça/dia, meta do técnico (por época) e custo por cabeça por dia
+  function cartaoConsumo(lista, kgDeposito, dias, ep) {
+    const seloMeta = { dentro: () => selo('verde', 'DENTRO DA META'), acima: () => selo('laranja', 'ACIMA DA META'), abaixo: () => selo('laranja', 'ABAIXO DA META') };
+    const linha = (x) => {
+      const p = x.pasto;
       let direita;
-      if (gramas !== null) direita = `<span class="g-cabeca"><b>${n(gramas)} g</b><small>por cabeça/dia</small></span>`;
+      if (x.gramas !== null) direita = `<span class="g-cabeca"><span class="q"><b>${n(x.gramas)}</b> <small>g</small></span><small>por cabeça/dia</small></span>`;
       else if (!(p.cabecas > 0)) direita = `<span class="g-cabeca"><small>falta o número<br>de cabeças</small></span>`;
       else direita = `<span class="g-cabeca"><small>nada enviado</small></span>`;
+      const extras = [];
+      if (x.meta) extras.push(`Meta ${ep ? 'da ' + ep.nome.toLowerCase() : ''}: ${U().q(n(x.meta), 'g')}`);
+      if (x.custoCabDia !== null) extras.push(`${reaisQ(x.custoCabDia, '/cabeça/dia', 3)}`);
+      else if (x.semPreco) extras.push('custo: sem preço');
       return `
-      <li class="item-pasto">
-        <span class="num-pasto" style="background:${esc(p.cor || '#4a4636')}">${esc(p.numero ?? '')}</span>
-        <span class="item-texto"><b>${esc(p.nome)}</b><small>${p.cabecas || 0} cabeças · ${n(kg)} kg enviados</small></span>
-        ${direita}
+      <li class="item-pasto-col">
+        <div class="item-pasto">
+          <span class="num-pasto" style="background:${esc(p.cor || '#4a4636')}">${esc(p.numero ?? '')}</span>
+          <span class="item-texto"><b>${esc(p.nome)}</b><small>${U().q(p.cabecas || 0, 'cabeças')} · ${kgQ(x.kg)} enviados</small></span>
+          ${direita}
+        </div>
+        ${extras.length || x.nivelMeta ? `<div class="linha-dupla extras-pasto"><span class="detalhe">${extras.join(' · ')}</span>${x.nivelMeta ? seloMeta[x.nivelMeta]() : ''}</div>` : ''}
       </li>`;
     };
     return `
   <section class="secao" aria-labelledby="t-consumo">
     <h2 id="t-consumo">Consumo por cabeça por dia</h2>
-    <p class="ajuda">Sal mandado para o pasto ÷ cabeças ÷ ${dias} ${dias === 1 ? 'dia' : 'dias'}.</p>
+    <p class="ajuda">Sal mandado para o pasto ÷ cabeças ÷ ${dias} ${dias === 1 ? 'dia' : 'dias'}. A meta é a do técnico, cadastrada no lote${ep ? ` (época marcada: ${ep.nome.toLowerCase()})` : ''}; até 10% de diferença conta como dentro.</p>
     ${lista.length ? `<ul class="lista">${lista.map(linha).join('')}</ul>` : '<p>Nenhum pasto cadastrado.</p>'}
-    ${kgDeposito ? `<p class="ajuda">Foram para o depósito: ${n(kgDeposito)} kg (não entram na conta).</p>` : ''}
+    ${kgDeposito ? `<p class="ajuda">Foram para o depósito: ${kgQ(kgDeposito)} (não entram na conta).</p>` : ''}
   </section>`;
   }
 
@@ -126,11 +159,11 @@ window.App = window.App || {};
     ${lista.length ? `
     <ul class="lista">${lista.map((c) => `
       <li class="item-painel">
-        <div class="linha-dupla"><b>${esc(c.insumo.nome)}</b><b class="qtd-compra">${esc(C().qtdTexto(c.kg, c.insumo))}</b></div>
-        <span class="detalhe">${n(c.kg)} kg${c.custo !== null ? ' · ' + reais(c.custo) : ' · sem preço cadastrado'}</span>
+        <div class="linha-dupla"><b>${esc(c.insumo.nome)}</b><span class="qtd-compra">${qtdQ(c.kg, c.insumo)}</span></div>
+        <span class="detalhe">${kgQ(c.kg)}${c.custo !== null ? ' · ' + reaisQ(c.custo) : ' · sem preço cadastrado'}</span>
       </li>`).join('')}
     </ul>
-    ${comPreco.length ? `<div class="linha-dupla total-compra"><span>Total estimado${semPreco ? ' (só os com preço)' : ''}</span><b>${reais(total)}</b></div>` : ''}`
+    ${comPreco.length ? `<div class="linha-dupla total-compra"><span>Total estimado${semPreco ? ' (só os com preço)' : ''}</span>${reaisQ(total)}</div>` : ''}`
     : `<p>${selo('verde', 'NADA PARA COMPRAR')}</p>`}
     <p class="ajuda">Para ${C().DIAS_COMPRA} dias de produção, mais o estoque mínimo, menos o que já tem.</p>
   </section>`;
@@ -155,13 +188,13 @@ window.App = window.App || {};
 
   Object.assign(A.telas, {
     async painel({ rolar }) {
-      const [misturas, insumos, pastos, problemas, contagens] = await Promise.all(
-        ['misturas', 'insumos', 'pastos', 'problemas', 'contagens'].map((x) => A.db.todos(x)));
-      const d = C().painel({ misturas, insumos, pastos, problemas, contagens });
+      const [misturas, insumos, pastos, problemas, contagens, formulas] = await Promise.all(
+        ['misturas', 'insumos', 'pastos', 'problemas', 'contagens', 'formulas'].map((x) => A.db.todos(x)));
+      // Época marcada (usada na meta de cada lote) e aviso de troca (só no mês marcado; o app nunca troca sozinho)
+      const [epoca, meses] = await Promise.all([A.db.config('epocaAtual'), A.db.config('mesesEpoca')]);
+      const d = C().painel({ misturas, insumos, pastos, problemas, contagens, formulas, epoca });
       const abertos = d.problemasAbertos;
       const urgentes = d.estoque.filter((e) => e.nivel === 'vermelho');
-      // Época marcada e aviso de troca (só no mês marcado pelo dono; o app nunca troca sozinho)
-      const [epoca, meses] = await Promise.all([A.db.config('epocaAtual'), A.db.config('mesesEpoca')]);
       const ep = epoca ? C().EPOCAS[epoca] : null;
       const troca = C().avisoTrocaEpoca(epoca, meses);
       const falas = [`Painel dos últimos 7 dias. ${d.producao.n} misturas, ${n(d.producao.kg)} quilos de sal.`];
@@ -181,9 +214,10 @@ window.App = window.App || {};
   ${abertos.length ? `<button class="alerta vermelho alerta-botao" data-acao="ver-problemas">${ic('problema', 40, 2.4)}<div>
     <b>${abertos.length} ${abertos.length === 1 ? 'problema aberto' : 'problemas abertos'}</b><span>Toque para ver</span></div></button>` : ''}
   ${cartaoProducao(d.producao)}
+  ${cartaoCusto(d.custo)}
   ${cartaoPrevistoReal(d.previstoReal)}
   ${cartaoEstoque(d.estoque)}
-  ${cartaoConsumo(d.consumoPastos, d.kgDeposito, d.dias)}
+  ${cartaoConsumo(d.consumoPastos, d.kgDeposito, d.dias, ep)}
   ${cartaoCompras(d.compras)}
   ${cartaoProblemas(abertos)}
 </main>`,
@@ -191,6 +225,7 @@ window.App = window.App || {};
           U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           U().ao(r, '[data-acao=contar]', () => A.ir('contarEstoque'));
           U().ao(r, '[data-acao=ver-epoca]', () => A.ir('epoca'));
+          U().ao(r, '[data-acao=precos]', () => A.ir('precos', { volta: 'painel' }));
           U().ao(r, '[data-acao=ver-problemas]', () => r.querySelector('#problemas').scrollIntoView({ behavior: 'smooth' }));
           r.querySelectorAll('[data-audio]').forEach((el) => {
             const p = problemas.find((x) => x.id === el.dataset.audio);

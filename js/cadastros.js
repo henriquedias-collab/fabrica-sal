@@ -346,18 +346,75 @@ window.App = window.App || {};
 <main class="tela">
   ${topo('INSUMOS')}
   <button class="btn verde" data-acao="novo">${ic('mais', 34, 2.6)} NOVO INSUMO</button>
+  ${lista.length ? `<button class="btn" data-acao="precos">${ic('saco', 30, 2)} ATUALIZAR PREÇOS</button>` : ''}
   ${lista.map((i) => `
   <button class="item-cad" data-id="${esc(i.id)}">
     ${miniatura(i.foto, i.cor, i.corTexto, 'saco')}
     <span class="item-texto"><b>${esc(i.nome)}</b>
-      <small>Estoque: ${esc(C().qtdTexto(i.estoqueKg, i))} · mínimo ${esc(C().qtdTexto(i.estoqueMinimoKg || 0, i))}</small></span>
+      <small>Estoque: ${U().qtdQ(i.estoqueKg, i)} · mínimo ${U().qtdQ(i.estoqueMinimoKg || 0, i)}</small>
+      <small>${i.precoPorUnidade > 0 ? `${U().reaisQ(i.precoPorUnidade, '/' + C().unidade(i).um)}` : '<span class="etiqueta">sem preço</span>'}${i.maxPct > 0 ? ` · máximo na mistura ${U().q(C().numero(i.maxPct), '%')}` : ''}</small></span>
     ${etiquetaExemplo(i)}
   </button>`).join('') || '<p class="vazio">Nenhum insumo cadastrado.</p>'}
 </main>`,
         ligar(r) {
           U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           U().ao(r, '[data-acao=novo]', () => A.ir('insumo', {}));
+          U().ao(r, '[data-acao=precos]', () => A.ir('precos', { volta: 'insumos' }));
           U().ao(r, '[data-id]', (b) => A.ir('insumo', { id: b.dataset.id }));
+        },
+      };
+    },
+
+    // ATUALIZAR PREÇOS: o preço do saco de todos os insumos numa tela só
+    async precos({ volta }) {
+      const lista = (await A.db.todos('insumos')).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      const voltar = volta || 'insumos';
+      return {
+        fala: 'Atualizar preços. Escreva o preço de cada saco e toque em salvar. Deixe em branco o que não sabe.',
+        html: `
+<main class="tela">
+  ${topo('PREÇOS')}
+  <p class="ajuda">Preço que você pagou em cada saco (ou por kg, se chega a granel). Em branco = "sem preço".</p>
+  ${lista.map((i) => {
+    const u = C().unidade(i);
+    return `
+  <div class="secao contagem">
+    <label class="rotulo" for="p-${esc(i.id)}">${esc(i.nome)}</label>
+    <p class="ajuda">${u.kgPor ? `${u.um[0].toUpperCase() + u.um.slice(1)} de ${C().numero(u.kgPor)} kg` : 'A granel: preço por kg'}</p>
+    <div class="campo-linha">
+      <span class="sufixo">R$</span>
+      <input id="p-${esc(i.id)}" data-id="${esc(i.id)}" class="campo" type="text" inputmode="decimal" autocomplete="off" value="${esc(paraCampo(i.precoPorUnidade))}" placeholder="sem preço">
+      <span class="sufixo">/${esc(u.um)}</span>
+    </div>
+    <p class="ajuda" data-ajuda="${esc(i.id)}"></p>
+  </div>`;
+  }).join('') || '<p class="vazio">Nenhum insumo cadastrado.</p>'}
+  ${erroHtml()}
+  <button class="btn verde grande" data-acao="salvar">${ic('certo', 44, 3)} SALVAR PREÇOS</button>
+</main>`,
+        ligar(r) {
+          const porId = U().porId(lista);
+          const mostrarKg = (campo) => {
+            const ins = porId[campo.dataset.id];
+            const v = lerNumero(campo.value);
+            const { kgPor } = C().unidade(ins);
+            r.querySelector(`[data-ajuda="${campo.dataset.id}"]`).textContent = v > 0 && kgPor ? `= R$ ${U().reaisTexto(v / kgPor)} por kg` : '';
+          };
+          r.querySelectorAll('input[data-id]').forEach((c) => { c.addEventListener('input', () => mostrarKg(c)); mostrarKg(c); });
+          U().ao(r, '[data-acao=voltar]', () => A.ir(voltar));
+          U().ao(r, '[data-acao=salvar]', async (b) => {
+            const mudados = [];
+            for (const c of r.querySelectorAll('input[data-id]')) {
+              const ins = porId[c.dataset.id];
+              const v = c.value.trim() === '' ? null : lerNumero(c.value);
+              if (c.value.trim() !== '' && (v === null || v < 0)) return mostrarErro(r, `Confira o preço de ${ins.nome}.`);
+              if ((v || null) !== (ins.precoPorUnidade || null)) mudados.push(Object.assign({}, ins, { precoPorUnidade: v, exemplo: false }));
+            }
+            b.disabled = true;
+            if (mudados.length) await A.db.transacao(['insumos'], (l) => mudados.forEach((x) => l('insumos').put(x)));
+            await A.ir(voltar);
+            A.mostrarAviso(mudados.length ? `Preços salvos (${mudados.length})` : 'Nada mudou');
+          });
         },
       };
     },
@@ -388,7 +445,8 @@ window.App = window.App || {};
   </div>
   ${campoNumero('estoque', 'Estoque agora', emUnidades(e.estoqueKg), '<span data-un="varios">sacos</span>', ' ')}
   ${campoNumero('minimo', 'Estoque mínimo (avisa quando ficar abaixo)', emUnidades(e.estoqueMinimoKg || 0), '<span data-un="varios">sacos</span>', ' ')}
-  ${campoNumero('preco', 'Preço de cada <span data-un="um">saco</span> (opcional)', e.precoPorUnidade, 'R$')}
+  ${campoNumero('preco', 'Preço de cada <span data-un="um">saco</span> (opcional)', e.precoPorUnidade, 'R$', 'Usado no custo da batida, do kg e por cabeça. Sem preço, o app mostra "sem preço".')}
+  ${campoNumero('maximo-pct', 'Máximo na mistura (opcional)', e.maxPct, '%', 'Quem informa é o técnico. Sem valor, o app não confere. Com valor, avisa ao salvar uma fórmula que passe dele.')}
   <div class="rotulo">Cor do quadro (aparece quando não tem foto)</div>
   ${seletorCores(CORES_INSUMO, e.cor)}
   ${erroHtml()}
@@ -438,12 +496,14 @@ window.App = window.App || {};
             if (estoque === null || estoque < 0) return mostrarErro(r, 'Preencha o estoque agora (pode ser 0).');
             if (minimo !== null && minimo < 0) return mostrarErro(r, 'O estoque mínimo não pode ser negativo.');
             if (preco !== null && preco < 0) return mostrarErro(r, 'O preço não pode ser negativo.');
+            const maxPct = lerNumero(campo('maximo-pct').value);
+            if (maxPct !== null && !(maxPct > 0 && maxPct <= 100)) return mostrarErro(r, 'O máximo na mistura precisa ser entre 0 e 100%.');
 
             b.disabled = true;
             const paraKg = (v) => Math.round((g ? v : v * kgPor) * 10) / 10;
             const registro = Object.assign(atual || { id: A.db.novoId('insumo'), criadoEm: new Date().toISOString() }, {
               nome, foto: e.foto || null, cor: e.cor, corTexto: e.corTexto, unidade: e.unidade, kgPorSaco: kgPor,
-              estoqueKg: paraKg(estoque), estoqueMinimoKg: paraKg(minimo || 0), precoPorUnidade: preco,
+              estoqueKg: paraKg(estoque), estoqueMinimoKg: paraKg(minimo || 0), precoPorUnidade: preco, maxPct,
               exemplo: false, // editou: passa a ser cadastro de verdade
             });
             const antes = estoqueAntes;
@@ -483,6 +543,7 @@ window.App = window.App || {};
       const [lista, insumos] = await Promise.all([A.db.todos('formulas'), A.db.todos('insumos')]);
       lista.sort((a, b) => (a.numero || 0) - (b.numero || 0));
       const ids = new Set(insumos.map((i) => i.id));
+      const insPorId = U().porId(insumos);
       return {
         fala: 'Fórmulas. Toque numa fórmula para mudar, ou em nova fórmula.',
         html: `
@@ -493,11 +554,14 @@ window.App = window.App || {};
   ${lista.map((f) => {
     const quebrada = f.itens.some((it) => !ids.has(it.insumoId));
     const ts = C().tamanhos(f);
+    const custo = C().custoItens(f.itens, insPorId);
+    const limite = C().passaLimite(f.itens, insPorId);
     return `
   <button class="item-cad" data-id="${esc(f.id)}">
     ${miniatura(f.foto, f.corClara, f.cor, 'misturar')}
     <span class="item-texto"><b>${f.numero} · ${esc(f.nome)}</b>
-      <small>${f.itens.length} ${f.itens.length === 1 ? 'insumo' : 'insumos'} · batida ${ts.map((t) => C().numero(t)).join(' ou ')} kg</small>
+      <small>${U().q(f.itens.length, f.itens.length === 1 ? 'insumo' : 'insumos')} · batida <span class="q">${ts.map((t) => `<b>${C().numero(t)}</b>`).join(' ou ')} <small>kg</small></span></small>
+      <small>${custo.porKg !== null ? U().reaisQ(custo.porKg, '/kg') : '<span class="etiqueta">sem preço</span>'}${limite.length ? ` <span class="etiqueta ruim">${ic('atencao', 14)} passa do limite</span>` : ''}</small>
       <span class="selos-linha">${U().seloTipo(f) || '<span class="etiqueta">sem tipo</span>'}${U().seloEpoca(f)}</span></span>
     ${quebrada ? '<span class="etiqueta ruim">falta insumo</span>' : etiquetaExemplo(f)}
   </button>`;
@@ -512,8 +576,8 @@ window.App = window.App || {};
     },
 
     async formula({ id }) {
-      const [atual, insumos, todas] = await Promise.all([
-        id ? A.db.pegar('formulas', id) : null, A.db.todos('insumos'), A.db.todos('formulas'),
+      const [atual, insumos, todas, misturas] = await Promise.all([
+        id ? A.db.pegar('formulas', id) : null, A.db.todos('insumos'), A.db.todos('formulas'), A.db.todos('misturas'),
       ]);
       insumos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const porId = U().porId(insumos);
@@ -579,6 +643,15 @@ window.App = window.App || {};
   </div>
   <button class="btn" data-acao="add-tamanho">${ic('mais', 30, 2.6)} ADICIONAR TAMANHO</button>
   <div id="previa" class="previa-tamanhos"></div>
+  <div id="limite" class="alerta vermelho alerta-limite" role="alert" hidden></div>
+  <div class="rotulo">Custo</div>
+  <div id="custo" class="custo-formula"></div>
+  <div class="rotulo">Comparar com sal comprado pronto (opcional)</div>
+  <div class="grade-2">
+    <div>${campoNumero('pronto-preco', 'Preço do saco', atual ? atual.prontoPrecoSaco : null, 'R$')}</div>
+    <div>${campoNumero('pronto-kg', 'Kg do saco', atual ? atual.prontoKgSaco : null, 'kg')}</div>
+  </div>
+  <div id="compara" class="custo-formula"></div>
   <div class="rotulo">Cor do cartão</div>
   ${seletorCores(CORES_FORTES, e.cor)}
   <div class="rotulo">Foto do sal (opcional)</div>
@@ -648,10 +721,56 @@ window.App = window.App || {};
             desenharTamanhos();
           });
 
+          // ---- custo, comparação com o sal pronto e limite por insumo (ao vivo) ----
+          const itensValidos = () => e.itens.filter((it) => porId[it.insumoId] && it.kg > 0);
+          const desenharCusto = () => {
+            const itens = itensValidos();
+            const c = C().custoItens(itens, porId);
+            const base = totalReceita();
+            const caixaCusto = r.querySelector('#custo');
+            if (!itens.length) caixaCusto.innerHTML = '<p class="ajuda">Preencha a receita para ver o custo.</p>';
+            else if (c.porKg === null) {
+              caixaCusto.innerHTML = `<p><span class="etiqueta">sem preço</span> ${esc(c.semPreco.join(', '))}</p>
+                <p class="ajuda">O custo aparece quando todos os insumos tiverem preço (Insumos → ATUALIZAR PREÇOS).</p>`;
+            } else {
+              caixaCusto.innerHTML = `<p>Batida base de ${U().kgQ(base)}: ${U().reaisQ(c.total)} · ${U().reaisQ(c.porKg, '/kg')}</p>` +
+                listaTamanhos().filter((t) => t !== base).map((t) => `<p class="ajuda">Batida de ${U().kgQ(t)}: ${U().reaisQ(c.porKg * t)}</p>`).join('');
+            }
+            // Comparação com o sal pronto
+            const preco = lerNumero(r.querySelector('#pronto-preco').value);
+            const kgSaco = lerNumero(r.querySelector('#pronto-kg').value);
+            const caixaComp = r.querySelector('#compara');
+            if (preco > 0 && kgSaco > 0) {
+              const prontoKg = preco / kgSaco;
+              const kg30 = atual ? (C().kgPorFormula(misturas, 30)[atual.id] || 0) : 0;
+              const fab = c.porKg;
+              const eco = fab !== null ? kg30 * (prontoKg - fab) : null;
+              caixaComp.innerHTML = `<p>Fabricando: ${fab !== null ? U().reaisQ(fab, '/kg') : 'sem preço'} · Pronto: ${U().reaisQ(prontoKg, '/kg')}</p>
+                <p>${eco === null ? '' : kg30 > 0
+                  ? `${eco >= 0 ? 'Economia' : 'Gasto a mais'} no mês: <b class="${eco >= 0 ? 'positivo' : 'negativo'}">${U().reaisQ(Math.abs(eco), '', 0)}</b> <span class="ajuda">(${U().kgQ(kg30)} feitos nos últimos 30 dias)</span>`
+                  : '<span class="ajuda">Economia no mês: sem produção desta fórmula nos últimos 30 dias.</span>'}</p>`;
+            } else caixaComp.innerHTML = '<p class="ajuda">Preencha o preço e o kg do saco do sal pronto para comparar.</p>';
+            // Limite por insumo: aviso vermelho com a conta
+            const v = C().passaLimite(itens, porId);
+            const caixaLim = r.querySelector('#limite');
+            caixaLim.hidden = !v.length;
+            caixaLim.innerHTML = v.length ? `${ic('problema', 40, 2.4)}<div><b>PASSA DO LIMITE</b>
+              ${v.map((x) => `<span>${esc(C().textoLimite(x))}</span>`).join('')}
+              <span>Confira com o técnico. Para salvar assim, você vai precisar confirmar.</span></div>` : '';
+            const salvar = r.querySelector('[data-acao=salvar]');
+            if (salvar && (!v.length || e.confirmaLimite !== JSON.stringify(v))) {
+              e.confirmaLimite = null;
+              salvar.className = 'btn verde grande';
+              salvar.innerHTML = `${ic('certo', 44, 3)} SALVAR`;
+            }
+          };
+          ['pronto-preco', 'pronto-kg'].forEach((x) => r.querySelector('#' + x).addEventListener('input', desenharCusto));
+
           const mostrarTotal = () => {
             const total = totalReceita();
             r.querySelector('#total').textContent = e.itens.length ? `Total da batida base: ${C().numero(total)} kg` : '';
             desenharTamanhos();
+            desenharCusto();
           };
           const ajudaItem = (it) => {
             const ins = porId[it.insumoId];
@@ -724,6 +843,22 @@ window.App = window.App || {};
             const repetido = e.itens.find((it, k) => e.itens.findIndex((x) => x.insumoId === it.insumoId) !== k);
             if (repetido) return mostrarErro(r, `${porId[repetido.insumoId].nome} está repetido. Junte numa linha só.`);
             if (!e.tipo) return mostrarErro(r, 'Escolha o tipo: sal mineral, proteinado ou outro.');
+            const prontoPreco = lerNumero(r.querySelector('#pronto-preco').value);
+            const prontoKg = lerNumero(r.querySelector('#pronto-kg').value);
+            if ((prontoPreco !== null || prontoKg !== null) && !(prontoPreco > 0 && prontoKg > 0)) {
+              return mostrarErro(r, 'Para comparar com o sal pronto, preencha o preço e o kg do saco (ou deixe os dois em branco).');
+            }
+            // Passou do limite de algum insumo: o dono precisa confirmar (2º toque em "CONFIRMAR E SALVAR")
+            const violacoes = C().passaLimite(e.itens, porId);
+            const chave = JSON.stringify(violacoes);
+            if (violacoes.length && e.confirmaLimite !== chave) {
+              e.confirmaLimite = chave;
+              b.className = 'btn vermelho grande';
+              b.innerHTML = `${ic('atencao', 40, 2.6)} CONFIRMAR E SALVAR`;
+              r.querySelector('#limite').scrollIntoView({ block: 'center', behavior: 'smooth' });
+              A.voz.falar('Atenção. ' + violacoes.map((x) => `${x.nome}: ${C().numero(x.pct)} por cento, o limite é ${C().numero(x.max)} por cento.`).join(' ') + ' Para salvar assim, toque de novo em confirmar e salvar.');
+              return;
+            }
 
             b.disabled = true;
             const registro = Object.assign(atual || { id: A.db.novoId('formula'), criadoEm: new Date().toISOString() }, {
@@ -734,6 +869,11 @@ window.App = window.App || {};
               tamanhoPadrao: e.tamanhosAuto ? null : padraoAtual(),
               tipo: e.tipo,
               epoca: e.epoca,
+              prontoPrecoSaco: prontoPreco > 0 ? prontoPreco : null,
+              prontoKgSaco: prontoKg > 0 ? prontoKg : null,
+              // O que o dono confirmou ao salvar acima do limite (a mistura confere de novo ao começar)
+              limitesConfirmados: violacoes.map((x) => ({ insumoId: x.insumoId, pct: x.pct, max: x.max })),
+              limiteConfirmadoEm: violacoes.length ? new Date().toISOString() : null,
               exemplo: false,
             });
             await A.db.salvar('formulas', registro);
@@ -805,6 +945,12 @@ window.App = window.App || {};
   <label class="rotulo" for="sal-seca">${ic('sol', 24, 2.2)} Sal da seca</label>
   <select id="sal-seca" class="campo">${opcoesSal(atual && atual.formulaSecaId)}</select>
   <p class="ajuda">Conforme a época marcada na Área do dono, o operador vê no destino qual sal este lote recebe.</p>
+  <div class="rotulo">Consumo esperado (meta do técnico, opcional)</div>
+  <div class="grade-2">
+    <div>${campoNumero('meta-aguas', 'Nas águas', atual ? atual.metaAguasG : null, 'g/cab/dia')}</div>
+    <div>${campoNumero('meta-seca', 'Na seca', atual ? atual.metaSecaG : null, 'g/cab/dia')}</div>
+  </div>
+  <p class="ajuda">O Painel compara o consumo por cabeça com a meta da época marcada: até 10% de diferença = dentro; mais = acima ou abaixo (amarelo).</p>
   <div class="rotulo">Cor do cartão</div>
   ${seletorCores(CORES_FORTES, e.cor)}
   <div class="rotulo">Foto do pasto (opcional)</div>
@@ -826,11 +972,17 @@ window.App = window.App || {};
             const mesmo = todos.find((p) => p.id !== (atual && atual.id) && p.numero === numero);
             if (mesmo) return mostrarErro(r, `O número ${numero} já é do pasto ${mesmo.nome}. Escolha outro.`);
             if (!(Number.isInteger(cabecas) && cabecas >= 0)) return mostrarErro(r, 'Diga quantas cabeças tem (número inteiro).');
+            const metaAguasG = lerNumero(r.querySelector('#meta-aguas').value);
+            const metaSecaG = lerNumero(r.querySelector('#meta-seca').value);
+            if ((metaAguasG !== null && !(metaAguasG > 0)) || (metaSecaG !== null && !(metaSecaG > 0))) {
+              return mostrarErro(r, 'A meta de consumo precisa ser um número maior que zero (ou fique em branco).');
+            }
             b.disabled = true;
             const registro = Object.assign(atual || { id: A.db.novoId('pasto'), criadoEm: new Date().toISOString() }, {
               nome, numero, cabecas, cor: e.cor, corClara: e.corClara, foto: e.foto || null, exemplo: false,
               formulaAguasId: r.querySelector('#sal-aguas').value || null,
               formulaSecaId: r.querySelector('#sal-seca').value || null,
+              metaAguasG, metaSecaG,
             });
             await A.db.salvar('pastos', registro);
             await A.ir('pastos');
