@@ -78,6 +78,7 @@ window.App = window.App || {};
       if (!arquivosOk()) return;
       await A.db.abrir();
       await A.exemplo.semearSePreciso();
+      await A.calc.converterPrecosParaKg(); // preço por saco (antigo) -> R$/kg, uma vez só
       const atual = await A.db.config('pessoaAtual');
       if (atual) {
         const p = await A.db.pegar('pessoas', atual);

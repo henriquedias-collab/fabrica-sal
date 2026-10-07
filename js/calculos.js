@@ -103,6 +103,9 @@ window.App = window.App || {};
 
   // ---------- painel dos donos ----------
 
+  // Pesos comuns de cada embalagem (botões na chegada, nos preços e na contagem)
+  const PESOS_COMUNS = { saco: [25, 30, 40, 50], balde: [10, 15, 20, 25], bag: [500, 750, 1000, 1200] };
+
   const DIAS_PAINEL = 7; // o painel olha os últimos 7 dias
   const DIAS_COMPRA = 30; // a lista de compras cobre 30 dias de produção
 
@@ -222,7 +225,8 @@ window.App = window.App || {};
         const { kgPor } = unidade(i);
         const unidades = kgPor ? Math.ceil(faltaKg / kgPor - 1e-9) : Math.ceil(faltaKg);
         const kg = kgPor ? unidades * kgPor : unidades;
-        const custo = i.precoPorUnidade > 0 ? unidades * i.precoPorUnidade : null;
+        const pk = precoKg(i);
+        const custo = pk !== null ? kg * pk : null; // custo pelo R$/kg
         return { insumo: i, unidades, kg, custo };
       })
       .filter(Boolean)
@@ -272,9 +276,24 @@ window.App = window.App || {};
   // ---------- custo (etapa 4.3) ----------
   // Preço do kg de um insumo: preço do saco ÷ kg do saco (a granel, o preço já é por kg). Sem preço = null.
   function precoKg(ins) {
-    if (!ins || !(ins.precoPorUnidade > 0)) return null;
+    if (!ins) return null;
+    if (ins.precoKg !== undefined) return ins.precoKg > 0 ? ins.precoKg : null; // guardado em R$/kg (desde out/2026)
+    // Cadastro antigo ainda não convertido: preço do saco ÷ kg do saco
+    if (!(ins.precoPorUnidade > 0)) return null;
     const { kgPor } = unidade(ins);
     return kgPor ? ins.precoPorUnidade / kgPor : ins.precoPorUnidade;
+  }
+
+  // Converte os preços antigos (por saco) para R$/kg, uma vez, sem apagar o valor antigo.
+  // Roda ao abrir o app e depois de importar uma cópia antiga.
+  async function converterPrecosParaKg() {
+    const lista = await App.db.todos('insumos');
+    const mudar = lista.filter((i) => i.precoKg === undefined).map((i) => {
+      const p = i.precoPorUnidade > 0 ? precoKg(i) : null;
+      return Object.assign({}, i, { precoKg: p === null ? null : Math.round(p * 10000) / 10000 });
+    });
+    if (mudar.length) await App.db.transacao(['insumos'], (l) => mudar.forEach((x) => l('insumos').put(x)));
+    return mudar.length;
   }
 
   // Custo de uma lista de itens ({ insumoId, kg }). Se faltar preço de algum insumo, total e porKg ficam null
@@ -540,8 +559,9 @@ window.App = window.App || {};
     return reg;
   }
 
-  // Chegou insumo: soma ao estoque e registra a entrada (tudo junto).
-  // kgPorUnidade = peso de cada saco que chegou (o operador pode mudar); o cadastro do insumo não muda.
+  // Chegou insumo: soma ao estoque (sempre em kg) e registra a entrada (tudo junto).
+  // kgPorUnidade = peso de cada saco desta compra. O peso mais recente vira o "saco atual" do insumo
+  // (usado na mistura e para mostrar o estoque em sacos); o estoque não muda de valor, só de leitura.
   async function salvarEntrada({ insumo, quantidade, kgPorUnidade, pessoa }) {
     const ins = await App.db.pegar('insumos', insumo.id);
     const { kgPor, granel } = unidade(ins);
@@ -549,6 +569,7 @@ window.App = window.App || {};
     const kg = granel ? quantidade : Math.round(quantidade * pesoCada * 10) / 10;
     ins.estoqueKg = Math.round((ins.estoqueKg + kg) * 10) / 10;
     const pesoDiferente = !granel && Math.abs(pesoCada - kgPor) > 0.05;
+    if (pesoDiferente) ins.kgPorSaco = pesoCada; // saco atual = o da compra mais recente
     const entrada = {
       id: App.db.novoId('entrada'),
       insumoId: ins.id,
@@ -556,8 +577,8 @@ window.App = window.App || {};
       quantidade,
       unidade: ins.unidade || 'saco',
       kgPorUnidade: pesoCada, // peso de cada saco nesta chegada
-      kgPorUnidadeCadastro: granel ? null : kgPor, // peso que estava no cadastro
-      pesoDiferente,
+      kgPorUnidadeCadastro: granel ? null : kgPor, // saco atual ANTES desta chegada
+      pesoDiferente, // true = esta chegada mudou o saco atual
       kg,
       texto: granel ? numero(kg) + ' kg' : `${quantidade} ${nomeUnidade(quantidade, ins)} × ${numero(pesoCada)} kg = ${numero(kg)} kg`,
       pessoaId: pessoa ? pessoa.id : null,
@@ -594,9 +615,9 @@ window.App = window.App || {};
   }
 
   App.calc = {
-    DIA, DIAS_PAINEL, DIAS_COMPRA, UNIDADES, numero, unidade, nomeUnidade, qtd, qtdTexto, qtdFala, consumoDiario,
+    DIA, DIAS_PAINEL, DIAS_COMPRA, PESOS_COMUNS, UNIDADES, numero, unidade, nomeUnidade, qtd, qtdTexto, qtdFala, consumoDiario,
     situacaoEstoque, alertasEstoque, painel, faltas,
-    precoKg, custoItens, precoProntoKg, kgPorFormula, comparaPronto, passaLimite, limitesNaoConfirmados, textoLimite,
+    precoKg, converterPrecosParaKg, custoItens, precoProntoKg, kgPorFormula, comparaPronto, passaLimite, limitesNaoConfirmados, textoLimite,
     TIPOS, EPOCAS, MESES, epocaDaFormula, salDoLote, avisoTrocaEpoca,
     baseKg, tamanhos, tamanhoPadrao, escalarFormula,
     montarMistura, novaMistura, progresso, totalColocadoKg, gravarAndamento, carregarAndamento, apagarAndamento,

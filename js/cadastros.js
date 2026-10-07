@@ -352,7 +352,7 @@ window.App = window.App || {};
     ${miniatura(i.foto, i.cor, i.corTexto, 'saco')}
     <span class="item-texto"><b>${esc(i.nome)}</b>
       <small>Estoque: ${U().qtdQ(i.estoqueKg, i)} · mínimo ${U().qtdQ(i.estoqueMinimoKg || 0, i)}</small>
-      <small>${i.precoPorUnidade > 0 ? `${U().reaisQ(i.precoPorUnidade, '/' + C().unidade(i).um)}` : '<span class="etiqueta">sem preço</span>'}${i.maxPct > 0 ? ` · máximo na mistura ${U().q(C().numero(i.maxPct), '%')}` : ''}</small></span>
+      <small>${C().precoKg(i) !== null ? U().reaisQ(C().precoKg(i), '/kg') : '<span class="etiqueta">sem preço</span>'}${C().unidade(i).kgPor ? ` · ${esc(C().unidade(i).um)} atual ${U().kgQ(C().unidade(i).kgPor)}` : ' · a granel'}${i.maxPct > 0 ? ` · máximo na mistura ${U().q(C().numero(i.maxPct), '%')}` : ''}</small></span>
     ${etiquetaExemplo(i)}
   </button>`).join('') || '<p class="vazio">Nenhum insumo cadastrado.</p>'}
 </main>`,
@@ -365,28 +365,51 @@ window.App = window.App || {};
       };
     },
 
-    // ATUALIZAR PREÇOS: o preço do saco de todos os insumos numa tela só
+    // ATUALIZAR PREÇOS: para cada insumo, o peso do saco desta compra (botões) e o preço do saco.
+    // Guarda o R$/kg (o custo das fórmulas usa sempre o R$/kg) e o peso vira o "saco atual" do insumo.
     async precos({ volta }) {
       const lista = (await A.db.todos('insumos')).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const voltar = volta || 'insumos';
+      // Estado de cada insumo: peso escolhido (kg do saco) e o valor digitado (R$ do saco; a granel, R$/kg)
+      const est = {};
+      lista.forEach((i) => {
+        const u = C().unidade(i);
+        const pk = C().precoKg(i);
+        est[i.id] = { peso: u.kgPor || null, granel: !!u.granel, preco: pk !== null ? (u.kgPor ? pk * u.kgPor : pk) : null };
+      });
+      const opcoesPeso = (i) => {
+        const u = C().unidade(i);
+        return [...new Set([...(C().PESOS_COMUNS[i.unidade || 'saco'] || []), u.kgPor, est[i.id].peso].filter((x) => x > 0))].sort((a, b) => a - b);
+      };
+      const chips = (i) => opcoesPeso(i).map((p) => {
+        const sel = Math.abs(p - est[i.id].peso) < 0.05;
+        return `<button class="opcao peso" data-ins="${esc(i.id)}" data-peso="${p}" aria-pressed="${sel}">${sel ? ic('certo', 16, 3.4) : ''}${C().numero(p)} kg</button>`;
+      }).join('') + `<button class="opcao peso outro" data-ins="${esc(i.id)}" data-acao="outro-peso">OUTRO</button>`;
       return {
-        fala: 'Atualizar preços. Escreva o preço de cada saco e toque em salvar. Deixe em branco o que não sabe.',
+        fala: 'Atualizar preços. Para cada insumo, toque no peso do saco e escreva o preço do saco. O app mostra o preço do quilo. Deixe em branco o que não sabe.',
         html: `
 <main class="tela">
   ${topo('PREÇOS')}
-  <p class="ajuda">Preço que você pagou em cada saco (ou por kg, se chega a granel). Em branco = "sem preço".</p>
+  <p class="ajuda">Escolha o peso do saco desta compra e escreva o preço do saco. O app guarda o <b>R$ por kg</b> (o custo das fórmulas usa sempre o R$/kg) e o peso vira o saco atual do insumo. Em branco = "sem preço".</p>
   ${lista.map((i) => {
+    const e = est[i.id];
     const u = C().unidade(i);
     return `
-  <div class="secao contagem">
+  <div class="secao contagem" data-bloco="${esc(i.id)}">
     <label class="rotulo" for="p-${esc(i.id)}">${esc(i.nome)}</label>
-    <p class="ajuda">${u.kgPor ? `${u.um[0].toUpperCase() + u.um.slice(1)} de ${C().numero(u.kgPor)} kg` : 'A granel: preço por kg'}</p>
+    ${e.granel ? '<p class="ajuda">A granel: preço por kg.</p>' : `
+    <div class="rotulo-peso">PESO DO ${esc(u.um.toUpperCase())}</div>
+    <div class="pesos" data-pesos="${esc(i.id)}">${chips(i)}</div>
+    <div class="campo-linha" data-outro="${esc(i.id)}" hidden>
+      <input class="campo" type="text" inputmode="decimal" autocomplete="off" data-peso-outro="${esc(i.id)}" placeholder="Outro peso" aria-label="Outro peso do ${esc(u.um)} de ${esc(i.nome)}">
+      <span class="sufixo">kg</span>
+    </div>`}
     <div class="campo-linha">
       <span class="sufixo">R$</span>
-      <input id="p-${esc(i.id)}" data-id="${esc(i.id)}" class="campo" type="text" inputmode="decimal" autocomplete="off" value="${esc(paraCampo(i.precoPorUnidade))}" placeholder="sem preço">
-      <span class="sufixo">/${esc(u.um)}</span>
+      <input id="p-${esc(i.id)}" data-id="${esc(i.id)}" class="campo" type="text" inputmode="decimal" autocomplete="off" value="${esc(paraCampo(e.preco === null ? null : Math.round(e.preco * 100) / 100))}" placeholder="sem preço">
+      <span class="sufixo">/${e.granel ? 'kg' : esc(u.um)}</span>
     </div>
-    <p class="ajuda" data-ajuda="${esc(i.id)}"></p>
+    <p class="preco-kg" data-ajuda="${esc(i.id)}" aria-live="polite"></p>
   </div>`;
   }).join('') || '<p class="vazio">Nenhum insumo cadastrado.</p>'}
   ${erroHtml()}
@@ -394,21 +417,58 @@ window.App = window.App || {};
 </main>`,
         ligar(r) {
           const porId = U().porId(lista);
-          const mostrarKg = (campo) => {
-            const ins = porId[campo.dataset.id];
-            const v = lerNumero(campo.value);
-            const { kgPor } = C().unidade(ins);
-            r.querySelector(`[data-ajuda="${campo.dataset.id}"]`).textContent = v > 0 && kgPor ? `= R$ ${U().reaisTexto(v / kgPor)} por kg` : '';
+          const mostrarKg = (id) => {
+            const e = est[id];
+            const v = lerNumero(r.querySelector(`#p-${CSS.escape(id)}`).value);
+            const caixa = r.querySelector(`[data-ajuda="${CSS.escape(id)}"]`);
+            if (!(v > 0)) { caixa.innerHTML = ''; return; }
+            const pk = e.granel ? v : (e.peso > 0 ? v / e.peso : null);
+            caixa.innerHTML = pk === null ? 'Escolha o peso do saco.' : `= ${U().reaisQ(pk, '/kg', 2)}${e.granel ? '' : ` <span class="ajuda">(R$ ${U().reaisTexto(v)} ÷ ${C().numero(e.peso)} kg)</span>`}`;
           };
-          r.querySelectorAll('input[data-id]').forEach((c) => { c.addEventListener('input', () => mostrarKg(c)); mostrarKg(c); });
+          lista.forEach((i) => mostrarKg(i.id));
+          r.querySelectorAll('input[data-id]').forEach((c) => c.addEventListener('input', () => mostrarKg(c.dataset.id)));
+          r.addEventListener('click', (ev) => {
+            const b = ev.target.closest('button[data-ins]');
+            if (!b) return;
+            const id = b.dataset.ins;
+            if (b.dataset.acao === 'outro-peso') {
+              const linha = r.querySelector(`[data-outro="${CSS.escape(id)}"]`);
+              linha.hidden = false;
+              linha.querySelector('input').focus();
+              return;
+            }
+            est[id].peso = Number(b.dataset.peso);
+            r.querySelector(`[data-pesos="${CSS.escape(id)}"]`).innerHTML = chips(porId[id]);
+            mostrarKg(id);
+          });
+          r.querySelectorAll('input[data-peso-outro]').forEach((c) => c.addEventListener('input', () => {
+            const v = lerNumero(c.value);
+            if (v > 0 && v <= 2000) {
+              est[c.dataset.pesoOutro].peso = Math.round(v * 10) / 10;
+              r.querySelector(`[data-pesos="${CSS.escape(c.dataset.pesoOutro)}"]`).innerHTML = chips(porId[c.dataset.pesoOutro]);
+              mostrarKg(c.dataset.pesoOutro);
+            }
+          }));
           U().ao(r, '[data-acao=voltar]', () => A.ir(voltar));
           U().ao(r, '[data-acao=salvar]', async (b) => {
             const mudados = [];
             for (const c of r.querySelectorAll('input[data-id]')) {
               const ins = porId[c.dataset.id];
+              const e = est[ins.id];
               const v = c.value.trim() === '' ? null : lerNumero(c.value);
               if (c.value.trim() !== '' && (v === null || v < 0)) return mostrarErro(r, `Confira o preço de ${ins.nome}.`);
-              if ((v || null) !== (ins.precoPorUnidade || null)) mudados.push(Object.assign({}, ins, { precoPorUnidade: v, exemplo: false }));
+              if (!e.granel && !(e.peso > 0)) return mostrarErro(r, `Escolha o peso do saco de ${ins.nome}.`);
+              const novoPk = v > 0 ? Math.round((e.granel ? v : v / e.peso) * 10000) / 10000 : null;
+              const pkAntes = C().precoKg(ins);
+              const pesoMudou = !e.granel && Math.abs(e.peso - (ins.kgPorSaco || 0)) > 0.05;
+              const precoMudou = (novoPk === null) !== (pkAntes === null) || (novoPk !== null && Math.abs(novoPk - pkAntes) > 0.00005);
+              if (precoMudou || pesoMudou) {
+                mudados.push(Object.assign({}, ins, {
+                  precoKg: novoPk, precoPorUnidade: null, // o preço fica guardado por kg
+                  kgPorSaco: e.granel ? ins.kgPorSaco : e.peso, // o peso mais recente vira o saco atual
+                  exemplo: false,
+                }));
+              }
             }
             b.disabled = true;
             if (mudados.length) await A.db.transacao(['insumos'], (l) => mudados.forEach((x) => l('insumos').put(x)));
@@ -424,7 +484,7 @@ window.App = window.App || {};
       const estoqueAntes = atual ? atual.estoqueKg : 0; // para registrar a correção de estoque
       const e = atual
         ? Object.assign({}, atual, { unidade: atual.unidade || 'saco' })
-        : { nome: '', cor: CORES_INSUMO[0][0], corTexto: CORES_INSUMO[0][1], unidade: 'saco', kgPorSaco: 50, estoqueKg: 0, estoqueMinimoKg: 0, precoPorUnidade: null, foto: null };
+        : { nome: '', cor: CORES_INSUMO[0][0], corTexto: CORES_INSUMO[0][1], unidade: 'saco', kgPorSaco: 50, estoqueKg: 0, estoqueMinimoKg: 0, precoKg: null, foto: null };
       const granel = () => e.unidade === 'kg';
       // Estoque e mínimo aparecem em sacos (ou baldes, bags); a granel, em kg
       const emUnidades = (kg) => (granel() || !e.kgPorSaco ? kg : kg / e.kgPorSaco);
@@ -441,11 +501,11 @@ window.App = window.App || {};
     ${Object.keys(ROTULO_UNIDADE).map((u) => `<button class="opcao" data-unidade="${u}" aria-pressed="${e.unidade === u}">${ROTULO_UNIDADE[u]}</button>`).join('')}
   </div>
   <div id="bloco-kg-por">
-    ${campoNumero('kg-por', 'Quantos kg em cada <span data-un="um">saco</span>?', granel() ? '' : e.kgPorSaco, 'kg')}
+    ${campoNumero('kg-por', 'Quantos kg tem o <span data-un="um">saco</span> atual?', granel() ? '' : e.kgPorSaco, 'kg', 'O estoque fica guardado em kg. O saco atual muda sozinho quando chega uma compra com outro peso.')}
   </div>
   ${campoNumero('estoque', 'Estoque agora', emUnidades(e.estoqueKg), '<span data-un="varios">sacos</span>', ' ')}
   ${campoNumero('minimo', 'Estoque mínimo (avisa quando ficar abaixo)', emUnidades(e.estoqueMinimoKg || 0), '<span data-un="varios">sacos</span>', ' ')}
-  ${campoNumero('preco', 'Preço de cada <span data-un="um">saco</span> (opcional)', e.precoPorUnidade, 'R$', 'Usado no custo da batida, do kg e por cabeça. Sem preço, o app mostra "sem preço".')}
+  ${campoNumero('preco', 'Preço por kg (opcional)', C().precoKg(e), 'R$/kg', 'Usado no custo da batida, do kg e por cabeça. Para calcular pelo preço do saco, use Insumos → ATUALIZAR PREÇOS. Sem preço, o app mostra "sem preço".')}
   ${campoNumero('maximo-pct', 'Máximo na mistura (opcional)', e.maxPct, '%', 'Quem informa é o técnico. Sem valor, o app não confere. Com valor, avisa ao salvar uma fórmula que passe dele.')}
   <div class="rotulo">Cor do quadro (aparece quando não tem foto)</div>
   ${seletorCores(CORES_INSUMO, e.cor)}
@@ -496,6 +556,9 @@ window.App = window.App || {};
             if (estoque === null || estoque < 0) return mostrarErro(r, 'Preencha o estoque agora (pode ser 0).');
             if (minimo !== null && minimo < 0) return mostrarErro(r, 'O estoque mínimo não pode ser negativo.');
             if (preco !== null && preco < 0) return mostrarErro(r, 'O preço não pode ser negativo.');
+            // Preço não mexido (o campo mostra só 2 casas): mantém o R$/kg exato que já estava guardado
+            const pkAntes = atual ? C().precoKg(atual) : null;
+            const precoKgFinal = preco !== null && pkAntes !== null && Math.abs(preco - Math.round(pkAntes * 100) / 100) < 0.0001 ? pkAntes : preco;
             const maxPct = lerNumero(campo('maximo-pct').value);
             if (maxPct !== null && !(maxPct > 0 && maxPct <= 100)) return mostrarErro(r, 'O máximo na mistura precisa ser entre 0 e 100%.');
 
@@ -503,7 +566,7 @@ window.App = window.App || {};
             const paraKg = (v) => Math.round((g ? v : v * kgPor) * 10) / 10;
             const registro = Object.assign(atual || { id: A.db.novoId('insumo'), criadoEm: new Date().toISOString() }, {
               nome, foto: e.foto || null, cor: e.cor, corTexto: e.corTexto, unidade: e.unidade, kgPorSaco: kgPor,
-              estoqueKg: paraKg(estoque), estoqueMinimoKg: paraKg(minimo || 0), precoPorUnidade: preco, maxPct,
+              estoqueKg: paraKg(estoque), estoqueMinimoKg: paraKg(minimo || 0), precoKg: precoKgFinal, precoPorUnidade: null, maxPct, // preço guardado em R$/kg
               exemplo: false, // editou: passa a ser cadastro de verdade
             });
             const antes = estoqueAntes;

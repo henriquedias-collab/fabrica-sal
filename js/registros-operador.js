@@ -77,9 +77,9 @@ window.App = window.App || {};
       const num = (x) => C().numero(x);
       const passo = u.granel ? 10 : 1; // a granel conta de 10 em 10 kg
       let n = 0;
-      let peso = u.kgPor; // peso de cada saco nesta chegada (começa com o do cadastro)
-      let opcoes = [...new Set([...(PESOS_COMUNS[ins.unidade || 'saco'] || []), u.kgPor].filter((x) => x > 0))].sort((a, b) => a - b);
-      let digitado = '';
+      let peso = u.kgPor; // peso de cada saco nesta chegada (começa com o saco atual do insumo)
+      // Só botões: os pesos comuns + o saco atual. Peso fora disso, só o dono cadastra (Área do dono).
+      const opcoes = [...new Set([...(PESOS_COMUNS[ins.unidade || 'saco'] || []), u.kgPor].filter((x) => x > 0))].sort((a, b) => a - b);
       const nome = (q) => C().nomeUnidade(q, ins);
       const UM = u.um.toUpperCase();
 
@@ -90,7 +90,6 @@ window.App = window.App || {};
         ? `Quantos quilos de ${ins.nome} chegaram? Cada toque no mais soma 10 quilos. Agora: ${falaConta()} Depois toque em guardar.`
         : `Quantos ${u.varios} de ${ins.nome} chegaram? Toque no mais para cada ${u.um}. Embaixo, toque no peso de cada ${u.um}. ` +
           `Agora: ${falaConta()} Depois toque em guardar.`);
-      const falaTeclado = `Digite quantos quilos tem cada ${u.um} e toque em usar este peso.`;
 
       return {
         fala: falaTela(),
@@ -115,27 +114,9 @@ window.App = window.App || {};
     <div class="espaco"></div>
     <button class="btn verde grande" data-acao="guardar" disabled>${ic('certo', 48, 3)} GUARDAR</button>
   </div>
-  <div class="parte-tela" id="parte-teclado" hidden>
-    <p class="instrucao">Quantos kg tem cada ${esc(u.um)}?</p>
-    <div class="visor"><span id="visor">0</span> <small>kg</small></div>
-    <p class="erro" role="alert" hidden>${ic('atencao', 28)} <span>Digite um peso entre 1 e 2.000 kg.</span></p>
-    <div class="teclado">
-      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button class="tecla" data-d="${d}">${d}</button>`).join('')}
-      <button class="tecla" data-d="," aria-label="Vírgula">,</button>
-      <button class="tecla" data-d="0">0</button>
-      <button class="tecla" data-acao="apagar-digito" aria-label="Apagar último número">${ic('voltar', 34, 2.6)}</button>
-    </div>
-    <div class="grade-2">
-      <button class="btn" data-acao="cancelar-peso">CANCELAR</button>
-      <button class="btn verde" data-acao="usar-peso">${ic('certo', 32, 3)} USAR</button>
-    </div>
-  </div>
 </main>`,
         ligar(r) {
           const btnGuardar = r.querySelector('[data-acao=guardar]');
-          const parteContar = r.querySelector('#parte-contar');
-          const parteTeclado = r.querySelector('#parte-teclado');
-          const erro = parteTeclado.querySelector('.erro');
 
           const desenharPesos = () => {
             const caixa = r.querySelector('#pesos');
@@ -143,7 +124,7 @@ window.App = window.App || {};
             caixa.innerHTML = opcoes.map((p) => {
               const sel = Math.abs(p - peso) < 0.05;
               return `<button class="opcao peso" data-peso="${p}" aria-pressed="${sel}">${sel ? ic('certo', 18, 3.4) : ''}${num(p)} kg</button>`;
-            }).join('') + '<button class="opcao peso outro" data-acao="outro">OUTRO</button>';
+            }).join('');
           };
 
           const mostrar = () => {
@@ -155,16 +136,6 @@ window.App = window.App || {};
             btnGuardar.disabled = n <= 0;
             r.querySelector('[data-acao=menos]').disabled = n <= 0;
             A.estado.fala = falaTela(); // o alto-falante lê a conta como está agora
-          };
-
-          const abrirTeclado = (abrir) => {
-            parteContar.hidden = abrir;
-            parteTeclado.hidden = !abrir;
-            erro.hidden = true;
-            digitado = '';
-            r.querySelector('#visor').textContent = '0';
-            A.estado.fala = abrir ? falaTeclado : falaTela();
-            A.voz.parar();
           };
 
           segurarParaRepetir(r.querySelector('[data-acao=mais]'), (vezes) => {
@@ -180,43 +151,12 @@ window.App = window.App || {};
             const b = ev.target.closest('button');
             if (!b) return;
             if (b.dataset.peso) { peso = Number(b.dataset.peso); desenharPesos(); mostrar(); }
-            if (b.dataset.acao === 'outro') abrirTeclado(true);
-            if (b.dataset.acao === 'cancelar-peso') abrirTeclado(false);
-            if (b.dataset.d !== undefined) {
-              const d = b.dataset.d;
-              if (d === ',' && (digitado.includes(',') || !digitado)) return;
-              if (digitado.includes(',') && digitado.split(',')[1].length >= 1) return; // 1 casa decimal
-              if (digitado.replace(',', '').length >= 5) return;
-              digitado = (digitado === '0' && d !== ',') ? d : digitado + d;
-              r.querySelector('#visor').textContent = digitado;
-              erro.hidden = true;
-            }
-            if (b.dataset.acao === 'apagar-digito') {
-              digitado = digitado.slice(0, -1);
-              r.querySelector('#visor').textContent = digitado || '0';
-            }
-            if (b.dataset.acao === 'usar-peso') {
-              const v = Number(digitado.replace(',', '.'));
-              if (!(v >= 1 && v <= 2000)) {
-                erro.hidden = false;
-                A.voz.falar('Digite um peso entre 1 e 2 mil quilos.');
-                return;
-              }
-              peso = Math.round(v * 10) / 10;
-              if (!opcoes.some((p) => Math.abs(p - peso) < 0.05)) opcoes = [...opcoes, peso].sort((a, b2) => a - b2);
-              abrirTeclado(false);
-              desenharPesos();
-              mostrar();
-            }
           });
 
           desenharPesos();
           mostrar();
 
-          U().ao(r, '[data-acao=voltar]', () => {
-            if (!parteTeclado.hidden) return abrirTeclado(false);
-            A.ir('chegada');
-          });
+          U().ao(r, '[data-acao=voltar]', () => A.ir('chegada'));
           U().ao(r, '[data-acao=guardar]', async () => {
             if (n <= 0) return;
             btnGuardar.disabled = true;
@@ -246,7 +186,7 @@ window.App = window.App || {};
           `${q} vezes ${num(pesoCada)} dá ${num(entrada.kg)} quilos.`;
       return {
         tom: 'verde',
-        fala: `Guardado. ${falaChegou} Agora o estoque tem ${num(insumo.estoqueKg)} quilos. Obrigado, ${p.nome}.`,
+        fala: `Guardado. ${falaChegou} Agora o estoque tem ${num(insumo.estoqueKg)} quilos.${entrada.pesoDiferente ? ` O saco atual agora é de ${num(pesoCada)} quilos.` : ''} Obrigado, ${p.nome}.`,
         html: `
 <main class="tela verde">
   <div class="topo"><span class="vago"></span><span class="espaco"></span>${U().btnFalar()}</div>
@@ -257,7 +197,8 @@ window.App = window.App || {};
     <span class="un">${esc(un)} DE ${esc(insumo.nome.toUpperCase())}</span>
     ${u.granel ? '' : `<span class="un-kg">× ${num(pesoCada)} kg = <b>${num(entrada.kg)} kg</b></span>`}
   </div>
-  <div class="bloco-verde linha-info">${ic('saco', 40, 1.8)}<div><small>Estoque agora</small><b>${esc(num(insumo.estoqueKg))} kg</b></div></div>
+  <div class="bloco-verde linha-info">${ic('saco', 40, 1.8)}<div><small>Estoque agora</small><b>${U().kgQ(insumo.estoqueKg)}</b></div></div>
+  ${entrada.pesoDiferente ? `<div class="bloco-verde linha-info">${ic('ajustes', 40, 1.8)}<div><small>Saco atual de ${esc(insumo.nome)}</small><b>agora é de ${U().kgQ(pesoCada)}</b></div></div>` : ''}
   <div class="bloco-verde linha-info">${U().avatar(p, 48)}<div><small>Quem recebeu · quando</small><b>${esc(p.nome)} · ${esc(C().quando(entrada.quando))}</b></div></div>
   <div class="espaco"></div>
   <button class="btn branco-no-verde" data-acao="inicio">${ic('casa', 44, 2.4)} INÍCIO</button>

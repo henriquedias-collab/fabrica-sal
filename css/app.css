@@ -763,3 +763,13 @@ h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .seca
 .q, .q b, .q small, .item-texto small .q small, .g-cabeca .q small { display: inline; }
 .item-texto small .q { white-space: nowrap; }
 .item-texto small b { display: inline; }
+
+/* ---------- Peso do saco por compra (Parte A) ---------- */
+.linha-contagem { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 2px solid var(--neutro); }
+.linha-contagem:first-of-type { border-top: 0; }
+.linha-contagem .pesos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.linha-contagem .opcao.peso { min-height: 56px; font-size: 19px; }
+.btn.btn-mais-tamanho { min-height: 56px; font-size: 19px; }
+.resultado-contagem { margin: 0; font-size: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.preco-kg { margin: 0; font-size: 20px; min-height: 26px; }
+.preco-kg .q b { font-size: 24px; color: var(--terra-escura); }

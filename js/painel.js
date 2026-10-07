@@ -243,61 +243,129 @@ window.App = window.App || {};
       };
     },
 
-    // CONTAR ESTOQUE: o dono escreve o que contou; a diferença entra no previsto x real
+    // CONTAR ESTOQUE: o dono escreve o que contou; a diferença entra no previsto x real.
+    // Cada insumo pode ter várias linhas (ex.: 10 sacos de 25 kg + 4 de 50 kg) ou ser contado em kg.
     async contarEstoque() {
       const insumos = (await A.db.todos('insumos')).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-      const emUnidades = (ins, kg) => { const { kgPor } = C().unidade(ins); return kgPor ? kg / kgPor : kg; };
-      const nomeVarios = (ins) => C().unidade(ins).varios;
+      const porId = U().porId(insumos);
+      // linhas[id] = [{ qtd: texto digitado, peso: kg do saco ou 'kg' (contado em kg) }]
+      const linhas = {};
+      insumos.forEach((i) => { const u = C().unidade(i); linhas[i.id] = [{ qtd: '', peso: u.kgPor || 'kg' }]; });
+      const pesosDe = (ins) => {
+        const u = C().unidade(ins);
+        const extras = linhas[ins.id].map((l) => l.peso).filter((p) => p !== 'kg');
+        return [...new Set([...(C().PESOS_COMUNS[ins.unidade || 'saco'] || []), u.kgPor, ...extras].filter((x) => x > 0))].sort((a, b) => a - b);
+      };
+      const kgDaLinha = (l) => {
+        const v = U().lerNumero(l.qtd);
+        if (v === null || v < 0) return null;
+        return Math.round((l.peso === 'kg' ? v : v * l.peso) * 10) / 10;
+      };
+      const linhaHtml = (ins, l, k) => {
+        const u = C().unidade(ins);
+        const chips = u.granel ? '' : pesosDe(ins).map((p) => {
+          const sel = l.peso !== 'kg' && Math.abs(p - l.peso) < 0.05;
+          return `<button class="opcao peso" data-linha="${k}" data-peso="${p}" aria-pressed="${sel}">${sel ? ic('certo', 16, 3.4) : ''}${n(p)} kg</button>`;
+        }).join('') + `<button class="opcao peso" data-linha="${k}" data-peso="kg" aria-pressed="${l.peso === 'kg'}">${l.peso === 'kg' ? ic('certo', 16, 3.4) : ''}EM KG</button>`;
+        const sufixo = l.peso === 'kg' ? 'kg' : C().nomeUnidade(2, ins);
+        return `
+      <div class="linha-contagem">
+        <div class="campo-linha">
+          <input class="campo" type="text" inputmode="decimal" autocomplete="off" data-linha="${k}" value="${esc(l.qtd)}" placeholder="Contei…" aria-label="Quantidade contada de ${esc(ins.nome)}">
+          <span class="sufixo">${esc(sufixo)}</span>
+          ${linhas[ins.id].length > 1 ? `<button class="btn-pequeno ruim" data-tirar-linha="${k}" aria-label="Tirar esta linha">${ic('mais', 22, 2.6)}</button>` : ''}
+        </div>
+        ${u.granel ? '' : `<div class="pesos">${chips}</div>`}
+      </div>`;
+      };
+      const blocoHtml = (ins) => {
+        const u = C().unidade(ins);
+        return `
+    <label class="rotulo">${esc(ins.nome)}</label>
+    <p class="ajuda">O app calcula: ${U().qtdQ(ins.estoqueKg, ins)} (${U().kgQ(ins.estoqueKg)})${u.kgPor ? ` · ${esc(u.um)} atual: ${U().kgQ(u.kgPor)}` : ''}</p>
+    ${linhas[ins.id].map((l, k) => linhaHtml(ins, l, k)).join('')}
+    ${u.granel ? '' : `<button class="btn btn-mais-tamanho" data-mais-linha>${ic('mais', 26, 2.6)} OUTRO TAMANHO</button>`}
+    <p class="resultado-contagem" data-resultado aria-live="polite"></p>`;
+      };
       return {
-        fala: 'Contar estoque. Conte o que tem na fábrica e escreva. Deixe em branco o que não contou.',
+        fala: 'Contar estoque. Para cada insumo, escreva quantos sacos contou e toque no peso do saco. Se tem sacos de tamanhos diferentes, toque em outro tamanho. Deixe em branco o que não contou.',
         html: `
 <main class="tela">
   ${topo('CONTAR ESTOQUE')}
   <p class="instrucao">Conte o que tem na fábrica e escreva. Deixe em branco o que não contou.</p>
-  ${insumos.map((i) => `
-  <div class="secao contagem">
-    <label class="rotulo" for="c-${esc(i.id)}">${esc(i.nome)}</label>
-    <p class="ajuda">O app calcula: ${esc(C().qtdTexto(i.estoqueKg, i))} (${n(i.estoqueKg)} kg)</p>
-    <div class="campo-linha">
-      <input id="c-${esc(i.id)}" data-id="${esc(i.id)}" class="campo" type="text" inputmode="decimal" autocomplete="off" placeholder="Contei…">
-      <span class="sufixo">${esc(nomeVarios(i))}</span>
-    </div>
-    <p class="ajuda" data-ajuda="${esc(i.id)}"></p>
-  </div>`).join('') || '<p class="vazio">Nenhum insumo cadastrado.</p>'}
+  ${insumos.map((i) => `<div class="secao contagem" data-bloco="${esc(i.id)}">${blocoHtml(i)}</div>`).join('') || '<p class="vazio">Nenhum insumo cadastrado.</p>'}
   <p class="erro" role="alert" hidden>${ic('atencao', 28)} <span></span></p>
   <button class="btn verde grande" data-acao="salvar">${ic('certo', 44, 3)} SALVAR</button>
 </main>`,
         ligar(r) {
-          const porId = U().porId(insumos);
-          const paraKg = (ins, v) => { const { kgPor } = C().unidade(ins); return Math.round((kgPor ? v * kgPor : v) * 10) / 10; };
-          r.querySelectorAll('input[data-id]').forEach((campo) => {
-            campo.addEventListener('input', () => {
-              const ins = porId[campo.dataset.id];
-              const v = U().lerNumero(campo.value);
-              const ajuda = r.querySelector(`[data-ajuda="${campo.dataset.id}"]`);
-              if (v === null || v < 0) { ajuda.textContent = ''; return; }
-              const kg = paraKg(ins, v);
-              const dif = Math.round((ins.estoqueKg - kg) * 10) / 10;
-              const texto = Math.abs(dif) < 0.05 ? 'bate com o calculado'
-                : dif > 0 ? `faltam ${C().qtdTexto(dif, ins)} do calculado` : `sobram ${C().qtdTexto(-dif, ins)} do calculado`;
-              ajuda.textContent = `= ${n(kg)} kg · ${texto}`;
-            });
+          const bloco = (id) => r.querySelector(`[data-bloco="${CSS.escape(id)}"]`);
+          // Soma das linhas preenchidas (null = nada contado; NaN = número errado)
+          const totalKg = (id) => {
+            const preenchidas = linhas[id].filter((l) => l.qtd.trim() !== '');
+            if (!preenchidas.length) return null;
+            let soma = 0;
+            for (const l of preenchidas) { const kg = kgDaLinha(l); if (kg === null) return NaN; soma += kg; }
+            return Math.round(soma * 10) / 10;
+          };
+          const mostrarResultado = (id) => {
+            const ins = porId[id];
+            const caixa = bloco(id).querySelector('[data-resultado]');
+            const kg = totalKg(id);
+            if (kg === null) { caixa.innerHTML = ''; return; }
+            if (Number.isNaN(kg)) { caixa.innerHTML = '<span class="etiqueta ruim">confira o número</span>'; return; }
+            const dif = Math.round((ins.estoqueKg - kg) * 10) / 10;
+            const emSacos = (x) => (C().unidade(ins).kgPor ? ` <span class="detalhe">(${U().qtdQ(x, ins)} de ${n(C().unidade(ins).kgPor)} kg)</span>` : '');
+            caixa.innerHTML = `Contado: <b>${U().kgQ(kg)}</b> · ` + (Math.abs(dif) < 0.05
+              ? `<span class="selo verde">${ic('certo', 16, 3)}BATE COM O CALCULADO</span>`
+              : dif > 0
+                ? `<span class="selo laranja">${ic('atencao', 16, 2.6)}FALTAM ${n(dif)} KG</span>${emSacos(dif)}`
+                : `<span class="selo laranja">${ic('atencao', 16, 2.6)}SOBRAM ${n(-dif)} KG</span>${emSacos(-dif)}`);
+          };
+          const redesenhar = (id) => { bloco(id).innerHTML = blocoHtml(porId[id]); mostrarResultado(id); };
+
+          r.addEventListener('input', (ev) => {
+            const campo = ev.target.closest('input[data-linha]');
+            if (!campo) return;
+            const id = campo.closest('[data-bloco]').dataset.bloco;
+            linhas[id][Number(campo.dataset.linha)].qtd = campo.value;
+            mostrarResultado(id);
+          });
+          r.addEventListener('click', (ev) => {
+            const b = ev.target.closest('button');
+            if (!b || !b.closest('[data-bloco]')) return;
+            const id = b.closest('[data-bloco]').dataset.bloco;
+            if (b.dataset.peso !== undefined) {
+              linhas[id][Number(b.dataset.linha)].peso = b.dataset.peso === 'kg' ? 'kg' : Number(b.dataset.peso);
+              redesenhar(id);
+            } else if (b.dataset.maisLinha !== undefined) {
+              // Novo tamanho: começa num peso diferente dos que já estão nas linhas
+              const usados = linhas[id].map((l) => l.peso);
+              const livre = pesosDe(porId[id]).find((p) => !usados.includes(p)) || 'kg';
+              linhas[id].push({ qtd: '', peso: livre });
+              redesenhar(id);
+              const campos = bloco(id).querySelectorAll('input[data-linha]');
+              campos[campos.length - 1].focus();
+            } else if (b.dataset.tirarLinha !== undefined) {
+              linhas[id].splice(Number(b.dataset.tirarLinha), 1);
+              redesenhar(id);
+            }
           });
           U().ao(r, '[data-acao=voltar]', () => A.ir('painel'));
           U().ao(r, '[data-acao=salvar]', async (b) => {
             const erro = r.querySelector('.erro');
             const contados = [];
-            for (const campo of r.querySelectorAll('input[data-id]')) {
-              if (!campo.value.trim()) continue;
-              const v = U().lerNumero(campo.value);
-              const ins = porId[campo.dataset.id];
-              if (v === null || v < 0) {
+            for (const ins of insumos) {
+              const kg = totalKg(ins.id);
+              if (kg === null) continue;
+              if (Number.isNaN(kg)) {
                 erro.querySelector('span').textContent = `Confira o número de ${ins.nome}.`;
                 erro.hidden = false;
-                campo.focus();
+                bloco(ins.id).scrollIntoView({ block: 'center' });
                 return;
               }
-              contados.push({ ins, kg: paraKg(ins, v) });
+              const detalhe = linhas[ins.id].filter((l) => l.qtd.trim() !== '')
+                .map((l) => (l.peso === 'kg' ? { kg: kgDaLinha(l) } : { quantidade: U().lerNumero(l.qtd), kgPorSaco: l.peso }));
+              contados.push({ ins, kg, detalhe });
             }
             if (!contados.length) {
               erro.querySelector('span').textContent = 'Escreva pelo menos um número.';
@@ -307,10 +375,10 @@ window.App = window.App || {};
             b.disabled = true;
             const quando = new Date().toISOString();
             // Guarda a contagem mesmo quando bate: assim o painel sabe que foi contado
-            await A.db.transacao(['insumos', 'contagens'], (l) => contados.forEach(({ ins, kg }) => {
+            await A.db.transacao(['insumos', 'contagens'], (l) => contados.forEach(({ ins, kg, detalhe }) => {
               l('contagens').put({
                 id: A.db.novoId('contagem'), insumoId: ins.id, insumoNome: ins.nome,
-                antesKg: ins.estoqueKg, depoisKg: kg, quando, tipo: 'contagem', exemplo: false,
+                antesKg: ins.estoqueKg, depoisKg: kg, detalhe, quando, tipo: 'contagem', exemplo: false,
               });
               l('insumos').put(Object.assign({}, ins, { estoqueKg: kg }));
             }));

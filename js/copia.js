@@ -125,6 +125,7 @@ window.App = window.App || {};
       A.estado.pessoa = p;
     }
     A.estado.mistura = null;
+    await A.calc.converterPrecosParaKg(); // cópia antiga: preço por saco -> R$/kg
   }
 
   // ---------- textos ----------

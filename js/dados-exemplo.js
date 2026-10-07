@@ -10,24 +10,25 @@ window.App = window.App || {};
     { id: 'ex-antonio', nome: 'Antônio', funcao: 'operador', cor: '#1f4fa0' },
   ];
 
-  // estoqueKg = estoque estimado agora. Preço = preço do saco (precoPorUnidade). maxPct = máximo na mistura (%).
+  // estoqueKg = estoque estimado agora (sempre em kg). precoKg = R$ por kg. kgPorSaco = saco atual (o da compra
+  // mais recente). maxPct = máximo na mistura (%).
   // Estoques escolhidos para a demonstração: sal e núcleo mineral sobrando, núcleo proteico perto de acabar,
   // núcleo reprodução abaixo do mínimo (e sem preço: não achei preço público), farelo em falta.
   const insumos = [
     // Sal comum: premissa do pai, R$ 15 o saco de 25 kg
-    { id: 'ex-sal', nome: 'Sal comum', cor: '#e9e7e1', corTexto: '#3d3a33', unidade: 'saco', kgPorSaco: 25, estoqueKg: 3000, estoqueMinimoKg: 1000, precoPorUnidade: 15 },
+    { id: 'ex-sal', nome: 'Sal comum', cor: '#e9e7e1', corTexto: '#3d3a33', unidade: 'saco', kgPorSaco: 25, estoqueKg: 3000, estoqueMinimoKg: 1000, precoKg: 0.6 },
     // Núcleo mineral: Fosbovi 30 (25 kg) R$ 328,65 — AB Araújo, 06/10/2026 (custos.xlsx)
-    { id: 'ex-nucleo', nome: 'Núcleo mineral', cor: '#e2d6ee', corTexto: '#4b2f73', unidade: 'saco', kgPorSaco: 25, estoqueKg: 750, estoqueMinimoKg: 200, precoPorUnidade: 328.65 },
+    { id: 'ex-nucleo', nome: 'Núcleo mineral', cor: '#e2d6ee', corTexto: '#4b2f73', unidade: 'saco', kgPorSaco: 25, estoqueKg: 750, estoqueMinimoKg: 200, precoKg: 13.146 },
     // Núcleo reprodução (mais fósforo): preço público não encontrado -> sem preço (mostra "sem preço" no custo)
-    { id: 'ex-nucleo-repro', nome: 'Núcleo mineral reprodução', cor: '#d9eeee', corTexto: '#0f4f4f', unidade: 'saco', kgPorSaco: 25, estoqueKg: 50, estoqueMinimoKg: 250, precoPorUnidade: null },
+    { id: 'ex-nucleo-repro', nome: 'Núcleo mineral reprodução', cor: '#d9eeee', corTexto: '#0f4f4f', unidade: 'saco', kgPorSaco: 25, estoqueKg: 50, estoqueMinimoKg: 250, precoKg: null },
     // Núcleo proteico: Premix Campo Seca R$ 7,58/kg -> R$ 189,50 por 25 kg (custos.xlsx)
-    { id: 'ex-nucleo-prot', nome: 'Núcleo proteico', cor: '#f3dbe7', corTexto: '#6e1a45', unidade: 'saco', kgPorSaco: 25, estoqueKg: 400, estoqueMinimoKg: 250, precoPorUnidade: 189.5 },
+    { id: 'ex-nucleo-prot', nome: 'Núcleo proteico', cor: '#f3dbe7', corTexto: '#6e1a45', unidade: 'saco', kgPorSaco: 25, estoqueKg: 400, estoqueMinimoKg: 250, precoKg: 7.58 },
     // Farelo de soja: R$ 2.130/t (média RS, Notícias Agrícolas, 06/10/2026) -> R$ 106,50 por 50 kg
-    { id: 'ex-farelo', nome: 'Farelo de soja', cor: '#ecd3a2', corTexto: '#6b4a12', unidade: 'saco', kgPorSaco: 50, estoqueKg: 0, estoqueMinimoKg: 500, precoPorUnidade: 106.5 },
+    { id: 'ex-farelo', nome: 'Farelo de soja', cor: '#ecd3a2', corTexto: '#6b4a12', unidade: 'saco', kgPorSaco: 50, estoqueKg: 0, estoqueMinimoKg: 500, precoKg: 2.13 },
     // Milho moído: CEPEA R$ 67,23 a saca de 60 kg (06/10/2026)
-    { id: 'ex-milho', nome: 'Milho moído', cor: '#f8e2c9', corTexto: '#6b3500', unidade: 'saco', kgPorSaco: 60, estoqueKg: 1200, estoqueMinimoKg: 300, precoPorUnidade: 67.23 },
+    { id: 'ex-milho', nome: 'Milho moído', cor: '#f8e2c9', corTexto: '#6b3500', unidade: 'saco', kgPorSaco: 60, estoqueKg: 1200, estoqueMinimoKg: 300, precoKg: 1.1205 },
     // Ureia: R$ 249,90 o saco de 25 kg (anúncio de busca, não conferido). Máximo de exemplo: 3% (NÃO é do técnico)
-    { id: 'ex-ureia', nome: 'Ureia', cor: '#dfe7f2', corTexto: '#1f3f6e', unidade: 'saco', kgPorSaco: 25, estoqueKg: 250, estoqueMinimoKg: 100, precoPorUnidade: 249.9, maxPct: 3 },
+    { id: 'ex-ureia', nome: 'Ureia', cor: '#dfe7f2', corTexto: '#1f3f6e', unidade: 'saco', kgPorSaco: 25, estoqueKg: 250, estoqueMinimoKg: 100, precoKg: 9.996, maxPct: 3 },
   ];
 
   // itens: kg de cada insumo na batida BASE, na ordem em que entram no misturador.
@@ -144,13 +145,14 @@ window.App = window.App || {};
   function entradasExemplo() {
     const porId = {};
     insumos.forEach((i) => { porId[i.id] = i; });
-    const chegou = (k, insumoId, quantidade, pesoCada, d, quem) => {
+    // anterior = saco atual do insumo antes desta chegada (se mudou, a chegada aparece como "saco atual mudou")
+    const chegou = (k, insumoId, quantidade, pesoCada, d, quem, anterior) => {
       const ins = porId[insumoId];
       const kg = quantidade * pesoCada;
       const nomeUn = quantidade === 1 ? 'saco' : 'sacos';
       return {
         id: 'ex-entrada-' + k, insumoId, insumoNome: ins.nome, quantidade, unidade: 'saco',
-        kgPorUnidade: pesoCada, kgPorUnidadeCadastro: ins.kgPorSaco, pesoDiferente: Math.abs(pesoCada - ins.kgPorSaco) > 0.05, kg,
+        kgPorUnidade: pesoCada, kgPorUnidadeCadastro: anterior || pesoCada, pesoDiferente: Math.abs(pesoCada - (anterior || pesoCada)) > 0.05, kg,
         texto: `${quantidade} ${nomeUn} × ${App.calc.numero(pesoCada)} kg = ${App.calc.numero(kg)} kg`,
         pessoaId: quem.id, pessoaNome: quem.nome, quando: new Date(quandoDias(d, 11, 20)).toISOString(), exemplo: true,
       };
@@ -161,8 +163,8 @@ window.App = window.App || {};
       chegou(3, 'ex-sal', 80, 25, 30, pessoas[0]),
       chegou(4, 'ex-farelo', 40, 50, 25, pessoas[1]),
       chegou(5, 'ex-nucleo-prot', 60, 25, 20, pessoas[0]),
-      chegou(6, 'ex-milho', 30, 60, 15, pessoas[1]),
-      chegou(7, 'ex-milho', 10, 50, 8, pessoas[0]), // saca de 50 kg (o cadastro diz 60)
+      chegou(6, 'ex-milho', 10, 50, 15, pessoas[1], 60), // saca de 50 kg: o saco atual passou de 60 para 50
+      chegou(7, 'ex-milho', 30, 60, 8, pessoas[0], 50), // saca de 60 kg: voltou a ser o saco atual (compra mais recente)
     ];
   }
 
