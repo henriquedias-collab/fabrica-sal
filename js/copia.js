@@ -1,7 +1,9 @@
 // Cópia de segurança: exporta todos os dados para um arquivo e restaura a partir dele.
 // O arquivo é um texto (JSON) com todas as lojas do banco. Fotos já são texto (data:...);
 // áudios (Blob) viram texto na exportação e voltam a ser Blob na importação.
-// A extensão é .txt porque o Chrome do Android só deixa compartilhar alguns tipos de arquivo, e .json não está entre eles.
+// A extensão é .cocho (desde out/2026), para o celular não abrir a cópia como texto. O IMPORTAR CÓPIA aceita
+// .cocho e as cópias antigas (.txt). O Chrome do Android só compartilha alguns tipos de arquivo e .cocho não está
+// entre eles: nesse caso a tela oferece BAIXAR ARQUIVO. Para LER os dados existe o PDF PARA LER (pdf-relatorios.js).
 window.App = window.App || {};
 
 (function () {
@@ -71,8 +73,10 @@ window.App = window.App || {};
     const texto = JSON.stringify({ app: MARCA, formato: FORMATO, criadaEm, lojas, config });
     const d = new Date(criadaEm);
     const p = (n) => String(n).padStart(2, '0');
-    const nome = `cocho-copia-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}h${p(d.getMinutes())}.txt`;
-    return { criadaEm, lojas, arquivo: new File([texto], nome, { type: 'text/plain' }) };
+    // "Cocho - Fazenda Exemplo - cópia 07-10-2026 09h51.cocho"
+    const fazenda = String((await A.db.config('nomeFazenda')) || '').replace(/[\\/:*?"<>|]/g, '-').trim();
+    const nome = `Cocho - ${fazenda ? fazenda + ' - ' : ''}cópia ${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(d.getHours())}h${p(d.getMinutes())}.cocho`;
+    return { criadaEm, lojas, arquivo: new File([texto], nome, { type: 'application/octet-stream' }) };
   }
 
   // Lê e confere o arquivo escolhido. Dá erro com mensagem simples se não for uma cópia do app.
@@ -178,7 +182,7 @@ window.App = window.App || {};
     escolherArquivo() {
       const entrada = document.createElement('input');
       entrada.type = 'file';
-      entrada.accept = '.txt,.json,text/plain,application/json';
+      // Sem filtro de tipo: o celular não conhece ".cocho" e esconderia o arquivo. ler() confere se é uma cópia.
       entrada.addEventListener('change', async () => {
         const f = entrada.files && entrada.files[0];
         if (!f) return;
@@ -216,6 +220,7 @@ window.App = window.App || {};
     <p>Fotos e áudios vão junto. Tamanho: ${tamanho(arquivo.size)}.</p>
     <p class="ajuda">${esc(arquivo.name)}</p>
   </section>
+  <div class="alerta aviso-leitura" role="note">${ic('mensagem', 36, 2.2)}<div><b>Este arquivo é só para o app.</b><span>Para ler, use o PDF.</span></div></div>
   ${enviarPrimeiro ? `
   <button class="btn verde grande" data-acao="enviar">${ic('nuvem', 44, 2.4)} GUARDAR NO DRIVE</button>
   <p class="ajuda centro">Na lista que abrir, escolha <b>Drive</b> (ou "Salvar em Arquivos" no iPhone).</p>
@@ -223,6 +228,8 @@ window.App = window.App || {};
   <button class="btn verde grande" data-acao="baixar">${ic('baixar', 44, 2.4)} BAIXAR ARQUIVO</button>
   <p class="ajuda centro">Depois, coloque o arquivo numa pasta do Google Drive.</p>
   ${podeEnviar ? `<button class="btn" data-acao="enviar">${ic('nuvem', 30, 2.4)} Compartilhar</button>` : ''}`}
+  <button class="btn" data-acao="pdf-ler">${ic('baixar', 32, 2.4)} PDF PARA LER</button>
+  <p class="ajuda centro">Insumos, estoque, fórmulas, lotes, misturas, chegadas e problemas com fotos. Feito no celular, sem internet.</p>
 </main>`,
         ligar(r) {
           const feito = async (msg) => {
@@ -230,6 +237,18 @@ window.App = window.App || {};
             await A.ir('dono');
             A.mostrarAviso(msg);
           };
+          U().ao(r, '[data-acao=pdf-ler]', async (b) => {
+            b.disabled = true;
+            try {
+              const { blob, nome } = await A.pdfRelatorios.completo();
+              A.pdf.baixar(blob, nome);
+              A.mostrarAviso('PDF pronto: ' + nome);
+            } catch (e) {
+              console.error(e);
+              A.mostrarAviso('Não deu para fazer o PDF. Tente de novo.', 'laranja');
+            }
+            b.disabled = false;
+          });
           U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           U().ao(r, '[data-acao=enviar]', async () => {
             try {

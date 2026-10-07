@@ -808,3 +808,7 @@ h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .seca
 .lembrete-resumo .alerta b { font-size: 20px; }
 .lembrete-resumo .alerta span { display: block; font-size: 17px; color: var(--tinta-2); }
 .lembrete-resumo .btn-pequeno { width: 64px; height: 64px; flex: none; }
+
+/* EXPORTAR CÓPIA: "Este arquivo é só para o app. Para ler, use o PDF" (informação, não alerta) */
+.alerta.aviso-leitura { background: var(--cartao); border-color: var(--borda); color: var(--terra-escura); margin-bottom: 14px; }
+.alerta.aviso-leitura span { display: block; color: var(--tinta-2); }

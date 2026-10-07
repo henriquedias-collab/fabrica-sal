@@ -72,8 +72,10 @@ window.App = window.App || {};
   }
 
   // ---------- montador de relatório (A4 em pé, mm) ----------
+  // Uma página só (resumo): o que não cabe fica de fora. Com { paginas: true }: abre página nova quando acaba o espaço.
   class Relatorio {
-    constructor(jsPDF) {
+    constructor(jsPDF, op) {
+      this.multi = !!(op && op.paginas);
       this.doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
       this.L = 210; this.H = 297; this.m = 12; this.w = this.L - 2 * this.m; this.y = this.m;
       this.doc.setFont('helvetica', 'normal');
@@ -82,11 +84,37 @@ window.App = window.App || {};
     fonte(tam, negrito) { this.doc.setFont('helvetica', negrito ? 'bold' : 'normal'); this.doc.setFontSize(tam); }
     txt(s, x, y, op) { this.doc.text(texto(s), x, y, op || {}); }
     largura(s) { return this.doc.getTextWidth(texto(s)); }
-    cabe(alt) { return this.y + alt <= this.H - 16; } // deixa espaço para o rodapé
+    // Texto que não cabe na coluna termina em "..." (em vez de invadir a linha de baixo)
+    cortar(s, max) {
+      let t = texto(s);
+      if (this.doc.getTextWidth(t) <= max) return t;
+      while (t.length > 1 && this.doc.getTextWidth(t + '...') > max) t = t.slice(0, -1);
+      return t.trimEnd() + '...';
+    }
+    cabe(alt) { // deixa espaço para o rodapé
+      if (this.y + alt <= this.H - 16) return true;
+      if (!this.multi) return false;
+      this.novaPagina();
+      return true;
+    }
+    // Página seguinte: faixa terra fina com o título, para não perder o fio
+    novaPagina() {
+      const d = this.doc;
+      d.addPage();
+      this.cor(COR.terra, 'fill'); d.rect(0, 0, this.L, 9, 'F');
+      this.cor(COR.branco); this.fonte(9, true); this.txt(this.titulo || '', this.m, 6);
+      this.fonte(9, false); this.txt(this.subtitulo || '', this.L - this.m, 6, { align: 'right' });
+      this.y = 15;
+    }
+    // Foto pequena (data:image/jpeg); se der erro, segue sem ela
+    imagem(dataUrl, x, y, w, h) {
+      try { this.doc.addImage(dataUrl, 'JPEG', x, y, w, h); } catch (e) { console.warn('foto no PDF:', e); }
+    }
 
     // Faixa terra com logo, título, nome da fazenda e período
     cabecalho(titulo, subtitulo, logoPng) {
       const d = this.doc;
+      this.titulo = titulo; this.subtitulo = subtitulo;
       this.cor(COR.terra, 'fill'); d.rect(0, 0, this.L, 30, 'F');
       this.cor(COR.terraEscura, 'fill'); d.rect(0, 30, this.L, 1.6, 'F');
       let x = this.m;
@@ -122,7 +150,7 @@ window.App = window.App || {};
     }
 
     secao(titulo, ajuda) {
-      if (!this.cabe(16)) return false;
+      if (!this.cabe(this.multi ? 26 : 16)) return false; // em várias páginas: o título não fica sozinho no pé
       this.cor(COR.terraEscura); this.fonte(12.5, true); this.txt(titulo, this.m, this.y + 4);
       if (ajuda) { this.cor(COR.tinta2); this.fonte(8, false); this.txt(ajuda, this.L - this.m, this.y + 4, { align: 'right' }); }
       this.cor(COR.borda, 'draw'); this.doc.setLineWidth(0.5); this.doc.line(this.m, this.y + 6.5, this.L - this.m, this.y + 6.5);
@@ -148,7 +176,8 @@ window.App = window.App || {};
           const tw = this.largura(c.t) + 5;
           const sx = c.al === 'right' ? x + cw - tw : c.al === 'center' ? x + (cw - tw) / 2 : x;
           this.cor(fundo, 'fill'); this.cor(borda, 'draw'); d.setLineWidth(0.4);
-          d.roundedRect(sx, this.y + 0.6, tw, alt - 2.6, 1.6, 1.6, 'FD');
+          const sh = Math.min(alt - 2.6, 5.9); // selo sempre do mesmo tamanho, no meio da linha
+          d.roundedRect(sx, this.y + alt / 2 - 0.7 - sh / 2, tw, sh, 1.6, 1.6, 'FD');
           this.cor(letra); this.txt(c.t, sx + 2.5, this.y + alt / 2 + 0.9);
         } else {
           const vazio = c.t === null || c.t === undefined;
@@ -156,7 +185,14 @@ window.App = window.App || {};
           this.cor(vazio ? COR.tinta2 : (c.cor || o.cor || COR.tinta));
           const s = vazio ? SEM : c.t;
           const ax = c.al === 'right' ? x + cw - 1 : c.al === 'center' ? x + cw / 2 : x + 1;
-          this.txt(s, ax, yTxt, { align: c.al || 'left', maxWidth: cw - 2 });
+          if (c.quebra) {
+            // até 2 linhas (a linha da tabela precisa ter altura para isso)
+            const ls = this.doc.splitTextToSize(texto(s), cw - 2).slice(0, 2);
+            const passo = tam * 0.42;
+            ls.forEach((l, k) => this.doc.text(l, ax, yTxt + (k - (ls.length - 1) / 2) * passo, { align: c.al || 'left' }));
+          } else {
+            this.txt(this.cortar(s, cw - 2), ax, yTxt, { align: c.al || 'left' });
+          }
         }
         x += cw;
       });
@@ -178,6 +214,17 @@ window.App = window.App || {};
       this.cor(COR.borda, 'draw'); this.doc.setLineWidth(0.4); this.doc.line(this.m, this.H - 12, this.L - this.m, this.H - 12);
       this.fonte(7.5, false); this.cor(COR.tinta2);
       this.txt(s, this.m, this.H - 7.5, { maxWidth: this.w });
+    }
+
+    // Rodapé em todas as páginas, com "página 1 de 3"
+    rodapeTodas(s) {
+      const n = this.doc.getNumberOfPages();
+      for (let i = 1; i <= n; i++) {
+        this.doc.setPage(i);
+        this.rodape(s);
+        this.fonte(7.5, true); this.cor(COR.tinta2);
+        this.txt(`página ${i} de ${n}`, this.L - this.m, this.H - 4, { align: 'right' });
+      }
     }
 
     blob() { return this.doc.output('blob'); }
@@ -325,5 +372,5 @@ window.App = window.App || {};
     return d.length <= 11 ? '55' + d : d;
   }
 
-  A.pdf = { carregar, logo, nomeArquivo, Relatorio, COR, resumo, baixar, texto, compartilhar, numeroWhats };
+  A.pdf = { carregar, logo, nomeArquivo, Relatorio, COR, resumo, baixar, texto, compartilhar, numeroWhats, num, reais, kg, dataHora, SEM };
 })();
