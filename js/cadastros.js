@@ -122,6 +122,33 @@ window.App = window.App || {};
     return h.toString(16);
   }
 
+  // Cartão "ÉPOCA AGORA" com os dois botões grandes (menu do dono e tela Época e lotes)
+  function cartaoEpoca(epoca, aviso) {
+    const E = C().EPOCAS;
+    return `
+  <section class="cartao-epoca" aria-labelledby="t-epoca">
+    <h2 id="t-epoca">ÉPOCA AGORA</h2>
+    <div class="grade-2">
+      ${['aguas', 'seca'].map((k) => `<button class="btn-epoca ${k}" data-marcar-epoca="${k}" aria-pressed="${epoca === k}">
+        ${ic(E[k].icone, 40, 2.2)}<span>${E[k].nome}</span>${epoca === k ? `<small>${ic('certo', 18, 3)} marcada</small>` : ''}</button>`).join('')}
+    </div>
+    ${!epoca ? '<p class="ajuda">Nenhuma época marcada: o operador não vê sugestão de sal por lote.</p>' : ''}
+    ${aviso ? `<p class="aviso-dono">${ic('atencao', 24)} <span><b>Hora de trocar para o sal ${C().EPOCAS[aviso.para].fala}.</b> O app só avisa: a troca é você quem marca aqui.</span></p>` : ''}
+  </section>`;
+  }
+  function ligarEpoca(r, telaAtual) {
+    U().ao(r, '[data-marcar-epoca]', async (b) => {
+      const k = b.dataset.marcarEpoca;
+      await A.db.definir('epocaAtual', k);
+      await A.ir(telaAtual);
+      A.mostrarAviso(`Época: ${C().EPOCAS[k].nome}. O operador vê o sal ${C().EPOCAS[k].fala} de cada lote.`);
+    });
+  }
+  async function dadosEpoca() {
+    const [epoca, meses] = await Promise.all([A.db.config('epocaAtual'), A.db.config('mesesEpoca')]);
+    return { epoca: epoca || null, meses: meses || null, aviso: C().avisoTrocaEpoca(epoca, meses) };
+  }
+
   // Usados também no painel (contar estoque)
   Object.assign(A.ui, { lerNumero, paraCampo });
 
@@ -219,19 +246,24 @@ window.App = window.App || {};
   <button class="btn-menu" data-ir="${acao}">${ic(icone, 40, 1.8)}<span>${titulo}<small>${detalhe}</small></span>${ic('seguir', 28, 2.4)}</button>`;
       const n = (lista, um, varios) => `${lista.length} ${lista.length === 1 ? um : varios}`;
       const avisoCopia = await A.copia.aviso();
+      const ep = await dadosEpoca();
       return {
-        fala: 'Área do dono. Escolha o que quer cadastrar ou conferir.',
+        fala: 'Área do dono. Escolha o que quer cadastrar ou conferir.' +
+          (ep.epoca ? ` A época marcada é ${C().EPOCAS[ep.epoca].fala}.` : ' Nenhuma época marcada.') +
+          (ep.aviso ? ` Hora de trocar para o sal ${C().EPOCAS[ep.aviso.para].fala}.` : ''),
         html: `
 <main class="tela">
   ${U().marca()}
   ${topo('ÁREA DO DONO')}
   ${avisoCopia}
   <button class="btn-menu painel-menu" data-ir="painel">${ic('grafico', 40, 2.2)}<span>Painel<small>Produção, estoque, consumo, compras e problemas</small></span>${ic('seguir', 28, 2.4)}</button>
+  ${cartaoEpoca(ep.epoca, ep.aviso)}
   <button class="btn" data-ir="exportarCopia">${ic('baixar', 32, 2.4)} EXPORTAR CÓPIA</button>
   <button class="btn" data-acao="importar">${ic('abrir', 32, 2.4)} IMPORTAR CÓPIA</button>
   ${item('insumos', 'saco', 'Insumos', n(insumos, 'cadastrado', 'cadastrados'))}
   ${item('formulas', 'misturar', 'Fórmulas', n(formulas, 'cadastrada', 'cadastradas'))}
   ${item('pastos', 'pasto', 'Pastos e lotes', n(pastos, 'cadastrado', 'cadastrados'))}
+  ${item('epoca', 'calendario', 'Época e lotes', 'Meses da troca e o sal de cada lote')}
   ${item('pessoas', 'pessoa', 'Pessoas', n(pessoas.filter((p) => p.ativo !== false), 'na lista', 'na lista'))}
   ${item('registros', 'mensagem', 'Registros', 'Misturas, chegadas, problemas e estoque')}
   ${item('exemplos', 'ajustes', 'Dados de exemplo', 'Apagar ou recomeçar a demonstração')}
@@ -241,6 +273,65 @@ window.App = window.App || {};
           U().ao(r, '[data-acao=voltar]', () => A.ir(A.estado.pessoa ? 'inicio' : 'quem'));
           U().ao(r, '[data-ir]', (b) => A.ir(b.dataset.ir));
           U().ao(r, '[data-acao=importar]', () => A.copia.escolherArquivo());
+          ligarEpoca(r, 'dono');
+        },
+      };
+    },
+
+    // ÉPOCA E LOTES: época atual, meses da troca (opcional) e o sal de cada lote
+    async epoca() {
+      const [ep, pastos, formulas] = await Promise.all([dadosEpoca(), A.db.todos('pastos'), A.db.todos('formulas')]);
+      pastos.sort((a, b) => a.numero - b.numero);
+      const fPorId = U().porId(formulas);
+      const M = C().MESES;
+      const opcoesMes = (sel) => '<option value="">— não avisar —</option>' +
+        M.map((nome, k) => `<option value="${k + 1}"${sel === k + 1 ? ' selected' : ''}>${nome[0].toUpperCase() + nome.slice(1)}</option>`).join('');
+      const sal = (id) => (fPorId[id]
+        ? `<span class="sal-lote" style="--cor-sal:${fPorId[id].cor}"><b>${fPorId[id].numero}</b> ${esc(fPorId[id].nome)}</span>`
+        : '<span class="etiqueta">não definido</span>');
+      return {
+        fala: 'Época e lotes. Marque a época agora, os meses da troca, e confira o sal de cada lote.',
+        html: `
+<main class="tela">
+  ${topo('ÉPOCA E LOTES')}
+  ${cartaoEpoca(ep.epoca, ep.aviso)}
+  <section class="secao">
+    <h2>Meses da troca (opcional)</h2>
+    <p class="ajuda">No mês marcado, o Painel e esta área avisam "Hora de trocar". O app nunca troca sozinho.</p>
+    <label class="rotulo" for="mes-seca">${ic('sol', 22, 2.2)} A seca começa em</label>
+    <select id="mes-seca" class="campo">${opcoesMes(ep.meses && ep.meses.inicioSeca)}</select>
+    <label class="rotulo" for="mes-aguas">${ic('gota', 22, 2.2)} As águas começam em</label>
+    <select id="mes-aguas" class="campo">${opcoesMes(ep.meses && ep.meses.inicioAguas)}</select>
+    <button class="btn verde" data-acao="salvar-meses">${ic('certo', 30, 3)} SALVAR MESES</button>
+  </section>
+  <section class="secao">
+    <h2>Sal de cada lote</h2>
+    <p class="ajuda">Toque num lote para mudar.</p>
+    <ul class="lista">
+      ${pastos.map((p) => `<li><button class="linha-lote" data-pasto="${esc(p.id)}">
+        <span class="num-pasto" style="background:${esc(p.cor)}">${p.numero}</span>
+        <span class="item-texto"><b>${esc(p.nome)}</b>
+          <small>${ic('gota', 16, 2.2)} Águas: ${sal(p.formulaAguasId)}</small>
+          <small>${ic('sol', 16, 2.2)} Seca: ${sal(p.formulaSecaId)}</small></span>
+        ${ic('seguir', 24, 2.4)}</button></li>`).join('') || '<li>Nenhum pasto cadastrado.</li>'}
+    </ul>
+  </section>
+</main>`,
+        ligar(r) {
+          U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
+          ligarEpoca(r, 'epoca');
+          U().ao(r, '[data-pasto]', (b) => A.ir('pasto', { id: b.dataset.pasto }));
+          U().ao(r, '[data-acao=salvar-meses]', async () => {
+            const seca = Number(r.querySelector('#mes-seca').value) || null;
+            const aguas = Number(r.querySelector('#mes-aguas').value) || null;
+            if (seca && aguas && seca === aguas) {
+              A.mostrarAviso('A seca e as águas não podem começar no mesmo mês', 'laranja');
+              return;
+            }
+            await A.db.definir('mesesEpoca', seca || aguas ? { inicioSeca: seca, inicioAguas: aguas } : null);
+            await A.ir('epoca');
+            A.mostrarAviso('Meses da troca salvos');
+          });
         },
       };
     },
@@ -406,7 +497,8 @@ window.App = window.App || {};
   <button class="item-cad" data-id="${esc(f.id)}">
     ${miniatura(f.foto, f.corClara, f.cor, 'misturar')}
     <span class="item-texto"><b>${f.numero} · ${esc(f.nome)}</b>
-      <small>${f.itens.length} ${f.itens.length === 1 ? 'insumo' : 'insumos'} · batida ${ts.map((t) => C().numero(t)).join(' ou ')} kg</small></span>
+      <small>${f.itens.length} ${f.itens.length === 1 ? 'insumo' : 'insumos'} · batida ${ts.map((t) => C().numero(t)).join(' ou ')} kg</small>
+      <span class="selos-linha">${U().seloTipo(f) || '<span class="etiqueta">sem tipo</span>'}${U().seloEpoca(f)}</span></span>
     ${quebrada ? '<span class="etiqueta ruim">falta insumo</span>' : etiquetaExemplo(f)}
   </button>`;
   }).join('') || '<p class="vazio">Nenhuma fórmula cadastrada.</p>'}
@@ -433,6 +525,9 @@ window.App = window.App || {};
       e.tamanhosAuto = !(atual && Array.isArray(atual.tamanhos) && atual.tamanhos.length);
       e.tamanhos = e.tamanhosAuto ? [] : C().tamanhos(atual);
       e.padrao = atual && !e.tamanhosAuto ? C().tamanhoPadrao(atual) : null;
+      // Tipo (sem tipo = fórmula antiga ainda não marcada) e época (sem época = ano todo)
+      e.tipo = atual && C().TIPOS[atual.tipo] ? atual.tipo : null;
+      e.epoca = C().epocaDaFormula(atual);
 
       if (!insumos.length) {
         return {
@@ -462,6 +557,14 @@ window.App = window.App || {};
   <label class="rotulo" for="nome">Nome do sal</label>
   <input id="nome" class="campo" type="text" autocomplete="off" autocapitalize="sentences" maxlength="40" placeholder="Ex.: Sal mineral" value="${esc(e.nome)}">
   ${campoNumero('numero', 'Número (o operador vê no cartão)', e.numero, '')}
+  <div class="rotulo">Tipo</div>
+  <div class="grade-3">
+    ${Object.keys(C().TIPOS).map((t) => `<button class="opcao opcao-icone" data-tipo="${t}" aria-pressed="${e.tipo === t}">${ic(C().TIPOS[t].icone, 30, 2)}<span>${C().TIPOS[t].nome}</span></button>`).join('')}
+  </div>
+  <div class="rotulo">Época</div>
+  <div class="grade-3">
+    ${Object.keys(C().EPOCAS).map((k) => `<button class="opcao opcao-icone" data-epoca-f="${k}" aria-pressed="${e.epoca === k}">${ic(C().EPOCAS[k].icone, 30, 2)}<span>${C().EPOCAS[k].nome}</span></button>`).join('')}
+  </div>
   <div class="rotulo">Insumos de uma batida (na ordem sugerida)</div>
   <div id="itens" class="itens"></div>
   <button class="btn" data-acao="adicionar">${ic('mais', 30, 2.6)} ADICIONAR INSUMO</button>
@@ -486,6 +589,14 @@ window.App = window.App || {};
 </main>`,
         ligar(r) {
           const caixa = r.querySelector('#itens');
+          U().ao(r, '[data-tipo]', (b) => {
+            e.tipo = b.dataset.tipo;
+            r.querySelectorAll('[data-tipo]').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+          });
+          U().ao(r, '[data-epoca-f]', (b) => {
+            e.epoca = b.dataset.epocaF;
+            r.querySelectorAll('[data-epoca-f]').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+          });
           ligarFoto(r, e);
           ligarCores(r, (k) => { e.cor = CORES_FORTES[k][0]; e.corClara = CORES_FORTES[k][1]; });
 
@@ -612,6 +723,7 @@ window.App = window.App || {};
             if (e.itens.some((it) => !(it.kg > 0))) return mostrarErro(r, 'Preencha os kg de cada insumo.');
             const repetido = e.itens.find((it, k) => e.itens.findIndex((x) => x.insumoId === it.insumoId) !== k);
             if (repetido) return mostrarErro(r, `${porId[repetido.insumoId].nome} está repetido. Junte numa linha só.`);
+            if (!e.tipo) return mostrarErro(r, 'Escolha o tipo: sal mineral, proteinado ou outro.');
 
             b.disabled = true;
             const registro = Object.assign(atual || { id: A.db.novoId('formula'), criadoEm: new Date().toISOString() }, {
@@ -620,6 +732,8 @@ window.App = window.App || {};
               // Sem tamanhos cadastrados: a batida é o total da receita (como era antes)
               tamanhos: e.tamanhosAuto ? [] : e.tamanhos.slice(),
               tamanhoPadrao: e.tamanhosAuto ? null : padraoAtual(),
+              tipo: e.tipo,
+              epoca: e.epoca,
               exemplo: false,
             });
             await A.db.salvar('formulas', registro);
@@ -640,7 +754,10 @@ window.App = window.App || {};
     // ---------- PASTOS ----------
 
     async pastos() {
-      const lista = (await A.db.todos('pastos')).sort((a, b) => a.numero - b.numero);
+      const [lista, formulas] = await Promise.all([A.db.todos('pastos'), A.db.todos('formulas')]);
+      lista.sort((a, b) => a.numero - b.numero);
+      const fPorId = U().porId(formulas);
+      const salTexto = (id) => (fPorId[id] ? `Sal ${fPorId[id].numero}` : '—');
       return {
         fala: 'Pastos e lotes. Toque num pasto para mudar, ou em novo pasto.',
         html: `
@@ -650,7 +767,7 @@ window.App = window.App || {};
   ${lista.map((p) => `
   <button class="item-cad" data-id="${esc(p.id)}">
     ${p.foto ? miniatura(p.foto) : `<span class="mini-cad numero-cad" style="background:${p.cor}">${p.numero}</span>`}
-    <span class="item-texto"><b>Pasto ${p.numero} · ${esc(p.nome)}</b><small>${p.cabecas || 0} cabeças</small></span>
+    <span class="item-texto"><b>Pasto ${p.numero} · ${esc(p.nome)}</b><small>${p.cabecas || 0} cabeças · Águas: ${esc(salTexto(p.formulaAguasId))} · Seca: ${esc(salTexto(p.formulaSecaId))}</small></span>
     ${etiquetaExemplo(p)}
   </button>`).join('') || '<p class="vazio">Nenhum pasto cadastrado.</p>'}
 </main>`,
@@ -663,8 +780,14 @@ window.App = window.App || {};
     },
 
     async pasto({ id }) {
-      const [atual, todos] = await Promise.all([id ? A.db.pegar('pastos', id) : null, A.db.todos('pastos')]);
+      const [atual, todos, formulas] = await Promise.all([
+        id ? A.db.pegar('pastos', id) : null, A.db.todos('pastos'), A.db.todos('formulas'),
+      ]);
+      formulas.sort((a, b) => (a.numero || 0) - (b.numero || 0));
       const proximo = todos.reduce((m, p) => Math.max(m, p.numero || 0), 0) + 1;
+      // Lista de sais para escolher; mostra a época de cada um para ajudar (não bloqueia)
+      const opcoesSal = (sel) => '<option value="">Nenhum (não sugerir)</option>' + formulas.map((f) =>
+        `<option value="${esc(f.id)}"${f.id === sel ? ' selected' : ''}>Sal ${f.numero} · ${esc(f.nome)} (${C().EPOCAS[C().epocaDaFormula(f)].nome.toLowerCase()})</option>`).join('');
       const e = atual
         ? { cor: atual.cor, corClara: atual.corClara, foto: atual.foto || null }
         : { cor: CORES_FORTES[(proximo - 1) % CORES_FORTES.length][0], corClara: CORES_FORTES[(proximo - 1) % CORES_FORTES.length][1], foto: null };
@@ -677,6 +800,11 @@ window.App = window.App || {};
   <input id="nome" class="campo" type="text" autocomplete="off" autocapitalize="sentences" maxlength="30" placeholder="Ex.: Vacas" value="${esc(atual ? atual.nome : '')}">
   ${campoNumero('numero', 'Número (o operador vê no cartão)', atual ? atual.numero : proximo, '')}
   ${campoNumero('cabecas', 'Quantas cabeças', atual ? atual.cabecas : '', 'cabeças')}
+  <label class="rotulo" for="sal-aguas">${ic('gota', 24, 2.2)} Sal das águas</label>
+  <select id="sal-aguas" class="campo">${opcoesSal(atual && atual.formulaAguasId)}</select>
+  <label class="rotulo" for="sal-seca">${ic('sol', 24, 2.2)} Sal da seca</label>
+  <select id="sal-seca" class="campo">${opcoesSal(atual && atual.formulaSecaId)}</select>
+  <p class="ajuda">Conforme a época marcada na Área do dono, o operador vê no destino qual sal este lote recebe.</p>
   <div class="rotulo">Cor do cartão</div>
   ${seletorCores(CORES_FORTES, e.cor)}
   <div class="rotulo">Foto do pasto (opcional)</div>
@@ -701,6 +829,8 @@ window.App = window.App || {};
             b.disabled = true;
             const registro = Object.assign(atual || { id: A.db.novoId('pasto'), criadoEm: new Date().toISOString() }, {
               nome, numero, cabecas, cor: e.cor, corClara: e.corClara, foto: e.foto || null, exemplo: false,
+              formulaAguasId: r.querySelector('#sal-aguas').value || null,
+              formulaSecaId: r.querySelector('#sal-seca').value || null,
             });
             await A.db.salvar('pastos', registro);
             await A.ir('pastos');

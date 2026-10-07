@@ -230,6 +230,41 @@ window.App = window.App || {};
     };
   }
 
+  // ---------- tipo, época e lote ----------
+  // formula.tipo: 'mineral' | 'proteinado' | 'outro' (sem tipo = fórmula antiga, ainda não marcada)
+  // formula.epoca: 'aguas' | 'seca' | 'ano' (sem época = ano todo)
+  // pasto.formulaAguasId / pasto.formulaSecaId: o sal de cada lote em cada época (opcional)
+  // config 'epocaAtual' ('aguas' | 'seca', marcada pelo dono) e 'mesesEpoca' ({ inicioSeca, inicioAguas }, 1 a 12, opcional)
+  // Cores dos tipos: nunca verde/amarelo/vermelho (essas são de alerta) nem a terra da marca.
+  const TIPOS = {
+    mineral: { nome: 'SAL MINERAL', cor: '#1f4fa0', icone: 'cristal' },
+    proteinado: { nome: 'PROTEINADO', cor: '#5b3a8a', icone: 'grao' },
+    outro: { nome: 'OUTRO', cor: '#4a4636', icone: 'saco' },
+  };
+  const EPOCAS = {
+    aguas: { nome: 'ÁGUAS', icone: 'gota', fala: 'das águas' },
+    seca: { nome: 'SECA', icone: 'sol', fala: 'da seca' },
+    ano: { nome: 'ANO TODO', icone: 'calendario', fala: 'do ano todo' },
+  };
+  const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+  const epocaDaFormula = (f) => (f && EPOCAS[f.epoca] ? f.epoca : 'ano');
+
+  // O sal que o lote deve receber na época marcada (id da fórmula) ou null
+  function salDoLote(pasto, epocaAtual) {
+    if (!pasto || !epocaAtual) return null;
+    return (epocaAtual === 'seca' ? pasto.formulaSecaId : pasto.formulaAguasId) || null;
+  }
+
+  // No mês da troca marcado pelo dono, se a época ainda não foi trocada: { para: 'seca' | 'aguas' }. Só avisa.
+  function avisoTrocaEpoca(epocaAtual, meses, agora) {
+    if (!meses) return null;
+    const mes = new Date(agora || Date.now()).getMonth() + 1;
+    if (meses.inicioSeca === mes && epocaAtual !== 'seca') return { para: 'seca' };
+    if (meses.inicioAguas === mes && epocaAtual !== 'aguas') return { para: 'aguas' };
+    return null;
+  }
+
   // ---------- tamanho da batida ----------
   // A receita da fórmula (itens em kg) é a batida BASE. O dono cadastra os tamanhos que o operador pode escolher
   // (f.tamanhos, em kg) e o padrão (f.tamanhoPadrao). Fórmula antiga sem tamanhos: um tamanho só, o da receita.
@@ -452,6 +487,7 @@ window.App = window.App || {};
   App.calc = {
     DIA, DIAS_PAINEL, DIAS_COMPRA, UNIDADES, numero, unidade, nomeUnidade, qtd, qtdTexto, qtdFala, consumoDiario,
     situacaoEstoque, alertasEstoque, painel, faltas,
+    TIPOS, EPOCAS, MESES, epocaDaFormula, salDoLote, avisoTrocaEpoca,
     baseKg, tamanhos, tamanhoPadrao, escalarFormula,
     montarMistura, novaMistura, progresso, totalColocadoKg, gravarAndamento, carregarAndamento, apagarAndamento,
     faltando, concluirMistura, salvarEntrada, iniciais, quando,

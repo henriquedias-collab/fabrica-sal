@@ -160,7 +160,12 @@ window.App = window.App || {};
       const d = C().painel({ misturas, insumos, pastos, problemas, contagens });
       const abertos = d.problemasAbertos;
       const urgentes = d.estoque.filter((e) => e.nivel === 'vermelho');
+      // Época marcada e aviso de troca (só no mês marcado pelo dono; o app nunca troca sozinho)
+      const [epoca, meses] = await Promise.all([A.db.config('epocaAtual'), A.db.config('mesesEpoca')]);
+      const ep = epoca ? C().EPOCAS[epoca] : null;
+      const troca = C().avisoTrocaEpoca(epoca, meses);
       const falas = [`Painel dos últimos 7 dias. ${d.producao.n} misturas, ${n(d.producao.kg)} quilos de sal.`];
+      if (troca) falas.push(`Atenção: hora de trocar para o sal ${C().EPOCAS[troca.para].fala}.`);
       if (abertos.length) falas.push(`${abertos.length} ${abertos.length === 1 ? 'problema aberto' : 'problemas abertos'}.`);
       urgentes.forEach((e) => falas.push(`${e.insumo.nome}: ${e.dias === null ? 'estoque acabando' : 'acaba em ' + e.dias + (e.dias === 1 ? ' dia' : ' dias')}.`));
       return {
@@ -169,8 +174,10 @@ window.App = window.App || {};
 <main class="tela painel">
   <div class="topo">${U().btnVoltar()}
     <div class="titulo titulo-painel"><img src="icones/icone.svg" alt="" width="40" height="40">
-      <span><h1>Painel</h1><small>Últimos 7 dias · ${dataCurta(d.inicio)} a ${dataCurta(d.agora)}</small></span></div>
+      <span><h1>Painel</h1><small>Últimos 7 dias · ${dataCurta(d.inicio)} a ${dataCurta(d.agora)}${ep ? ` · Época: ${ep.nome}` : ''}</small></span></div>
     ${U().btnFalar()}</div>
+  ${troca ? `<button class="alerta laranja alerta-botao alerta-troca" data-acao="ver-epoca">${ic('atencao', 40, 2.4)}<div>
+    <b>Hora de trocar para o sal ${C().EPOCAS[troca.para].fala}</b><span>Pelo mês marcado. Toque para marcar a época quando trocar.</span></div></button>` : ''}
   ${abertos.length ? `<button class="alerta vermelho alerta-botao" data-acao="ver-problemas">${ic('problema', 40, 2.4)}<div>
     <b>${abertos.length} ${abertos.length === 1 ? 'problema aberto' : 'problemas abertos'}</b><span>Toque para ver</span></div></button>` : ''}
   ${cartaoProducao(d.producao)}
@@ -183,6 +190,7 @@ window.App = window.App || {};
         ligar(r) {
           U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           U().ao(r, '[data-acao=contar]', () => A.ir('contarEstoque'));
+          U().ao(r, '[data-acao=ver-epoca]', () => A.ir('epoca'));
           U().ao(r, '[data-acao=ver-problemas]', () => r.querySelector('#problemas').scrollIntoView({ behavior: 'smooth' }));
           r.querySelectorAll('[data-audio]').forEach((el) => {
             const p = problemas.find((x) => x.id === el.dataset.audio);

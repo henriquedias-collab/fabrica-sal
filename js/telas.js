@@ -48,6 +48,10 @@ window.App = window.App || {};
     baixar: '<path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M4 20h16"/>',
     grafico: '<path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V6"/><path d="M17 16v-8"/>',
     pausa: '<path d="M9 5v14"/><path d="M15 5v14"/>',
+    sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    cristal: '<path d="M12 3l7 6-7 12-7-12z"/><path d="M5 9h14"/><path d="M12 3 9 9l3 12 3-12z"/>',
+    grao: '<path d="M12 21V9"/><path d="M12 9c0-3 2-5 5-6 0 3-2 5-5 6z"/><path d="M12 13c0-3-2-5-5-6 0 3 2 5 5 6z"/><path d="M12 17c0-3 2-5 5-6 0 3-2 5-5 6z"/>',
+    calendario: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
     abrir: '<path d="M12 16V5"/><path d="M7 9.5l5-5 5 5"/><path d="M4 20h16"/>',
   };
 
@@ -95,6 +99,32 @@ window.App = window.App || {};
 
   function ao(raiz, seletor, fn) {
     raiz.querySelectorAll(seletor).forEach((el) => el.addEventListener('click', () => fn(el)));
+  }
+
+  // Selos de tipo e época do sal (ícone + texto; a cor nunca vai sozinha)
+  function seloTipo(f) {
+    const t = C().TIPOS[f && f.tipo];
+    return t ? `<span class="selo-sal" style="--cor-selo:${t.cor}">${ic(t.icone, 18, 2.2)}${t.nome}</span>` : '';
+  }
+  function seloEpoca(f) {
+    const e = C().EPOCAS[C().epocaDaFormula(f)];
+    return `<span class="selo-sal epoca">${ic(e.icone, 18, 2.2)}${e.nome}</span>`;
+  }
+
+  // Grava o destino e fecha a mistura: registra o que foi colocado de fato (o estoque já baixou saco por saco)
+  async function registrarDestino(destino) {
+    const m = A.estado.mistura;
+    let reg;
+    try {
+      reg = await C().concluirMistura(m, { destino, pessoa: A.estado.pessoa });
+    } catch (e) {
+      console.error(e);
+      A.mostrarAviso('Não salvou. Tente de novo.', 'laranja');
+      return false;
+    }
+    A.estado.mistura = null;
+    await A.ir('pronta', { mistura: reg });
+    return true;
   }
 
   function textoDestino(d) {
@@ -351,7 +381,8 @@ window.App = window.App || {};
   <div class="topo">${btnVoltar()}<h1 class="titulo">QUAL SAL?</h1>${btnFalar()}</div>
   ${formulas.map((f) => `
   <button class="cartao-sal" data-formula="${esc(f.id)}" style="--cor:${f.cor};--cor-clara:${f.corClara}">
-    <span class="foto-sal">${f.foto ? `<img src="${f.foto}" alt="">` : ic('saco', 96, 1.4)}</span>
+    <span class="foto-sal">${f.foto ? `<img src="${f.foto}" alt="">` : ic(C().TIPOS[f.tipo] ? C().TIPOS[f.tipo].icone : 'saco', 96, 1.4)}
+      <span class="selos-sal">${seloTipo(f)}${seloEpoca(f)}</span></span>
     <span class="faixa"><span>${esc(f.nome.toUpperCase())}</span><span class="numero">${f.numero}</span></span>
   </button>`).join('') || '<p class="vazio">Nenhum sal cadastrado.</p>'}
 </main>`,
@@ -691,20 +722,43 @@ window.App = window.App || {};
     },
 
     // PARA ONDE VAI O SAL
+    // Com a época marcada pelo dono, cada lote mostra o sal que deve receber agora.
+    // O lote que usa o sal que acabou de ser feito fica em destaque (verde, ✓).
     async destino() {
-      const pastos = (await A.db.todos('pastos')).sort((a, b) => a.numero - b.numero);
+      const m = A.estado.mistura;
+      const [pastos, formulas, epoca] = await Promise.all([
+        A.db.todos('pastos'), A.db.todos('formulas'), A.db.config('epocaAtual'),
+      ]);
+      pastos.sort((a, b) => a.numero - b.numero);
+      const fPorId = porId(formulas);
+      const sugerido = (p) => fPorId[C().salDoLote(p, epoca)] || null; // fórmula que o lote recebe nesta época
+      const certos = pastos.filter((p) => { const s = sugerido(p); return s && s.id === m.formula.id; });
+      const ep = epoca ? C().EPOCAS[epoca] : null;
+      let falaLotes = '';
+      if (ep && certos.length) {
+        falaLotes = `Na época ${ep.fala}, este sal vai para: ${certos.map((p) => `pasto ${p.numero}, ${p.nome}`).join('; ')}. Eles estão com o sinal verde. `;
+      }
       return {
-        fala: 'Para onde vai o sal? Toque no pasto. ' +
+        fala: 'Para onde vai o sal? ' + falaLotes + 'Toque no pasto. ' +
           pastos.map((p) => `Pasto ${p.numero}, ${p.nome}.`).join(' ') + ' Ou toque em guardar no depósito.',
         html: `
 <main class="tela">
   <div class="topo">${btnVoltar()}<h1 class="titulo">PARA ONDE VAI?</h1>${btnFalar()}</div>
+  ${ep ? `<p class="epoca-agora">${ic(ep.icone, 22, 2.2)} ÉPOCA: ${ep.nome}</p>` : ''}
   <div class="grade-pastos">
-    ${pastos.map((p) => `
-    <button class="cartao-pasto" data-pasto="${esc(p.id)}" style="--cor:${p.cor};--cor-clara:${p.corClara}" aria-label="Pasto ${p.numero}, ${esc(p.nome)}">
-      <span class="foto-pasto">${p.foto ? `<img src="${p.foto}" alt="">` : ic('pasto', 60, 1.6)}</span>
+    ${pastos.map((p) => {
+      const s = sugerido(p);
+      const certo = s && s.id === m.formula.id;
+      const selo = !s ? ''
+        : certo ? `<span class="selo-lote certo">${ic('certo', 22, 3)} ESTE SAL</span>`
+          : `<span class="selo-lote outro" style="--cor-sal:${s.cor}">${ic('atencao', 20, 2.4)} SAL ${s.numero}</span>`;
+      return `
+    <button class="cartao-pasto${certo ? ' certo' : ''}" data-pasto="${esc(p.id)}" style="--cor:${p.cor};--cor-clara:${p.corClara}"
+      aria-label="Pasto ${p.numero}, ${esc(p.nome)}${certo ? ', recebe este sal' : s ? `, recebe o sal ${s.numero}` : ''}">
+      <span class="foto-pasto">${p.foto ? `<img src="${p.foto}" alt="">` : ic('pasto', 60, 1.6)}${selo}</span>
       <span class="faixa-pasto"><span class="num">${p.numero}</span><span class="nome">${esc(p.nome)}</span></span>
-    </button>`).join('')}
+    </button>`;
+    }).join('')}
   </div>
   <button class="btn" data-acao="deposito">${ic('deposito', 34)} GUARDAR NO DEPÓSITO</button>
 </main>`,
@@ -714,30 +768,62 @@ window.App = window.App || {};
             if (salvando) return;
             salvando = true;
             r.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-            const m = A.estado.mistura;
-            let reg;
-            try {
-              // grava o que foi colocado de fato (o estoque já baixou saco por saco) e apaga o andamento
-              reg = await C().concluirMistura(m, { destino, pessoa: A.estado.pessoa });
-            } catch (e) {
+            if (!(await registrarDestino(destino))) {
               salvando = false;
               r.querySelectorAll('button').forEach((b) => { b.disabled = false; });
-              A.mostrarAviso('Não salvou. Tente de novo.', 'laranja');
-              return;
             }
-            A.estado.mistura = null;
-            A.ir('pronta', { mistura: reg });
           };
           ao(r, '[data-acao=voltar]', () => {
-            const m = A.estado.mistura;
             m.atual = m.formula.itens.length - 1; // volta mostrando o último insumo (com −1 para corrigir)
             A.ir('passo');
           });
           ao(r, '[data-pasto]', (b) => {
             const p = pastos.find((x) => x.id === b.dataset.pasto);
-            concluir({ tipo: 'pasto', id: p.id, numero: p.numero, nome: p.nome });
+            const s = sugerido(p);
+            const destino = { tipo: 'pasto', id: p.id, numero: p.numero, nome: p.nome };
+            if (s && s.id !== m.formula.id) {
+              // Este lote recebe outro sal nesta época: avisa antes (pode levar mesmo assim)
+              A.ir('outroSal', { destino, pasto: p, sugerida: s, epoca });
+            } else concluir(destino);
           });
           ao(r, '[data-acao=deposito]', () => concluir({ tipo: 'deposito', nome: 'Depósito' }));
+        },
+      };
+    },
+
+    // AVISO: ESTE LOTE RECEBE OUTRO SAL NESTA ÉPOCA (o operador pode levar mesmo assim)
+    async outroSal({ destino, pasto, sugerida, epoca }) {
+      const m = A.estado.mistura;
+      const ep = C().EPOCAS[epoca] || C().EPOCAS.ano;
+      const cartaoSal = (f, rotulo) => `
+  <div class="mini-sal" style="--cor:${f.cor}">
+    <span class="rotulo-mini">${rotulo}</span>
+    <span class="faixa-formula"><span>${esc(f.nome.toUpperCase())}</span><span class="numero">${f.numero}</span></span>
+  </div>`;
+      return {
+        fala: `Atenção. Na época ${ep.fala}, o pasto ${pasto.numero}, ${pasto.nome}, recebe o sal número ${sugerida.numero}, ${sugerida.nome}. ` +
+          `Você fez o sal número ${m.formula.numero}, ${m.formula.nome}. Para escolher outro pasto, toque no botão verde. Para levar mesmo assim, toque no botão amarelo.`,
+        html: `
+<main class="tela centro">
+  <div class="topo">${btnVoltar()}<span class="espaco"></span>${btnFalar()}</div>
+  <div class="circulo-alerta laranja">${ic('atencao', 72, 2.2)}</div>
+  <h1 class="titulo-falta laranja">ESTE LOTE USA OUTRO SAL</h1>
+  <p class="epoca-agora">${ic(ep.icone, 22, 2.2)} ÉPOCA: ${ep.nome} · PASTO ${pasto.numero} · ${esc(pasto.nome.toUpperCase())}</p>
+  ${cartaoSal(sugerida, 'ESTE LOTE RECEBE')}
+  ${cartaoSal(m.formula, 'VOCÊ FEZ')}
+  <div class="espaco"></div>
+  <button class="btn verde grande" data-acao="outro">${ic('voltar', 40, 2.6)} ESCOLHER OUTRO</button>
+  <button class="btn laranja" data-acao="levar">${ic('seguir', 30, 2.6)} LEVAR MESMO ASSIM</button>
+</main>`,
+        ligar(r) {
+          ao(r, '[data-acao=voltar]', () => A.ir('destino'));
+          ao(r, '[data-acao=outro]', () => A.ir('destino'));
+          ao(r, '[data-acao=levar]', async (b) => {
+            b.disabled = true;
+            // Fica anotado que foi para um lote que, nesta época, usa outro sal
+            const ok = await registrarDestino(Object.assign({}, destino, { foraDoPlano: true, salDoLoteId: sugerida.id, salDoLoteNome: sugerida.nome, epoca }));
+            if (!ok) b.disabled = false;
+          });
         },
       };
     },
@@ -825,7 +911,7 @@ window.App = window.App || {};
     <p>${feitas} ${feitas === 1 ? 'feita' : 'feitas'} no app · ${exemplos} de exemplo</p>
     <ul class="lista">
       ${misturas.slice(0, 10).map((m) => `<li><b>${esc(C().quando(m.fim))}</b> · ${esc(m.formulaNome)} · ${C().numero(m.totalKg)} kg<br>
-        ${esc(textoDestino(m.destino))} · ${esc(m.pessoaNome || '—')}${m.avisoFalta ? ' · <span class="etiqueta">feita com aviso de falta</span>' : ''}${incompleta(m)}${etq(m)}</li>`).join('') || '<li>Nenhuma.</li>'}
+        ${esc(textoDestino(m.destino))} · ${esc(m.pessoaNome || '—')}${m.avisoFalta ? ' · <span class="etiqueta">feita com aviso de falta</span>' : ''}${m.destino && m.destino.foraDoPlano ? ` <span class="etiqueta laranja">${ic('atencao', 16)} lote usava ${esc(m.destino.salDoLoteNome || 'outro sal')} ${m.destino.epoca === 'aguas' ? 'nas águas' : 'na seca'}</span>` : ''}${incompleta(m)}${etq(m)}</li>`).join('') || '<li>Nenhuma.</li>'}
     </ul>
   </section>
   <section class="secao">
@@ -925,5 +1011,5 @@ window.App = window.App || {};
     });
   }
 
-  A.ui = { esc, ic, marca, desenhoCocho, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
+  A.ui = { esc, ic, marca, desenhoCocho, seloTipo, seloEpoca, btnFalar, btnVoltar, avatar, fotoInsumo, porId, ao, reduzirFoto, descreverProblema, NOMES_PROBLEMA };
 })();

@@ -21,10 +21,12 @@ window.App = window.App || {};
   const formulas = [
     {
       id: 'ex-mineral', nome: 'Sal mineral', numero: 1, cor: '#1f4fa0', corClara: '#dbe5f5', tamanhos: [250, 500], tamanhoPadrao: 500,
+      tipo: 'mineral', epoca: 'ano',
       itens: [{ insumoId: 'ex-sal', kg: 350 }, { insumoId: 'ex-nucleo', kg: 150 }],
     },
     {
       id: 'ex-proteinado', nome: 'Proteinado', numero: 2, cor: '#a65300', corClara: '#f8e2c9', tamanhos: [250, 500], tamanhoPadrao: 500,
+      tipo: 'proteinado', epoca: 'seca',
       itens: [
         { insumoId: 'ex-farelo', kg: 200 },
         { insumoId: 'ex-sal', kg: 150 },
@@ -35,10 +37,10 @@ window.App = window.App || {};
   ];
 
   const pastos = [
-    { id: 'ex-pasto-1', numero: 1, nome: 'Vacas', cor: '#1d6b3a', corClara: '#d6e8dc', cabecas: 1500 },
-    { id: 'ex-pasto-2', numero: 2, nome: 'Novilhas', cor: '#1f4fa0', corClara: '#dbe5f5', cabecas: 1000 },
-    { id: 'ex-pasto-3', numero: 3, nome: 'Garrotes', cor: '#a65300', corClara: '#f8e2c9', cabecas: 800 },
-    { id: 'ex-pasto-4', numero: 4, nome: 'Bezerros', cor: '#5b3a8a', corClara: '#e6dcf2', cabecas: 600 },
+    { id: 'ex-pasto-1', numero: 1, nome: 'Vacas', cor: '#1d6b3a', corClara: '#d6e8dc', cabecas: 1500, formulaAguasId: 'ex-mineral', formulaSecaId: 'ex-proteinado' },
+    { id: 'ex-pasto-2', numero: 2, nome: 'Novilhas', cor: '#1f4fa0', corClara: '#dbe5f5', cabecas: 1000, formulaAguasId: 'ex-mineral', formulaSecaId: 'ex-proteinado' },
+    { id: 'ex-pasto-3', numero: 3, nome: 'Garrotes', cor: '#a65300', corClara: '#f8e2c9', cabecas: 800, formulaAguasId: 'ex-mineral', formulaSecaId: 'ex-proteinado' },
+    { id: 'ex-pasto-4', numero: 4, nome: 'Bezerros', cor: '#5b3a8a', corClara: '#e6dcf2', cabecas: 600, formulaAguasId: 'ex-mineral', formulaSecaId: 'ex-mineral' },
   ];
 
   // Histórico de 14 dias: 1 sal mineral por dia e 1 proteinado a cada 2 dias.
@@ -118,6 +120,9 @@ window.App = window.App || {};
     await App.db.transacao(nomes, (l) => {
       Object.keys(dados).forEach((n) => dados[n].forEach((x) => l(n).put(x)));
       l('config').put({ chave: 'exemploCarregado', valor: new Date().toISOString() });
+      // Época de exemplo: seca marcada; a seca começa em maio e as águas em outubro (o painel avisa no mês da troca)
+      l('config').put({ chave: 'epocaAtual', valor: 'seca' });
+      l('config').put({ chave: 'mesesEpoca', valor: { inicioSeca: 5, inicioAguas: 10 } });
     });
   }
 

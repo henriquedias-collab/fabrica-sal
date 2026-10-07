@@ -670,3 +670,51 @@ select.campo { font-size: 22px; padding: 0 12px; }
 .chip-tirar svg { transform: rotate(45deg); }
 .chip-tamanho.padrao .chip-tirar { color: #fff; border-left-color: rgba(255, 255, 255, 0.4); }
 .previa-tamanhos { display: flex; flex-direction: column; gap: 6px; }
+
+/* ---------- Tipo, época e lote ---------- */
+.cartao-sal .foto-sal { position: relative; }
+.selos-sal { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.selo-sal {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px;
+  background: var(--cor-selo, var(--tinta-2)); color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 0.3px;
+}
+.selo-sal.epoca { background: #fff; color: var(--tinta); border: 2px solid var(--borda-forte); }
+.selo-sal svg { flex: none; }
+.selos-linha { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.grade-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.opcao-icone { flex-direction: column; gap: 4px; min-height: 84px; font-size: 16px; text-align: center; line-height: 1.1; padding: 6px; }
+/* Época agora (menu do dono) */
+.cartao-epoca { background: var(--cartao); border: 3px solid var(--borda); border-radius: 26px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.cartao-epoca h2 { margin: 0; font-size: 18px; letter-spacing: 1px; color: var(--tinta-2); }
+.btn-epoca {
+  min-height: 104px; border-radius: 24px; border: 3px solid var(--borda); background: var(--cartao); color: var(--tinta);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-size: 26px; font-weight: 700; box-shadow: 0 5px 0 var(--borda-forte); margin-bottom: 5px;
+}
+.btn-epoca small { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; }
+.btn-epoca.aguas[aria-pressed="true"] { background: #1f4fa0; border-color: #1f4fa0; color: #fff; box-shadow: 0 5px 0 #143570; }
+.btn-epoca.seca[aria-pressed="true"] { background: var(--terra-escura); border-color: var(--terra-escura); color: #fff; box-shadow: 0 5px 0 #4d2600; }
+.btn-epoca:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--borda-forte); }
+.epoca-agora {
+  margin: -6px 0 0; display: inline-flex; align-self: center; align-items: center; gap: 6px; padding: 6px 16px;
+  border-radius: 999px; background: var(--creme-escuro); color: var(--terra-escura); font-size: 17px; font-weight: 700; text-align: center;
+}
+/* Destino: o sal de cada lote */
+.foto-pasto { position: relative; }
+.selo-lote {
+  position: absolute; top: 6px; left: 6px; right: 6px; display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 4px 6px; border-radius: 999px; font-size: 15px; font-weight: 700;
+}
+.selo-lote.certo { background: var(--verde); color: #fff; }
+.selo-lote.outro { background: #fff; color: var(--tinta); border: 3px solid var(--cor-sal, var(--borda-forte)); }
+.cartao-pasto.certo { box-shadow: 0 0 0 4px var(--verde), 0 6px 0 4px var(--verde-escuro); }
+/* Aviso: lote usa outro sal */
+.mini-sal { width: 100%; display: flex; flex-direction: column; gap: 4px; }
+.rotulo-mini { font-size: 15px; font-weight: 700; color: var(--tinta-2); letter-spacing: 0.5px; }
+.mini-sal .faixa-formula { font-size: 24px; }
+/* Época e lotes */
+.linha-lote { width: 100%; display: flex; align-items: center; gap: 12px; padding: 4px 0; border: 0; background: none; text-align: left; color: var(--tinta); }
+.linha-lote small { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.sal-lote { display: inline-flex; align-items: center; gap: 4px; }
+.sal-lote b { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--cor-sal); color: #fff; font-size: 14px; }
+.alerta-troca { box-shadow: 0 5px 0 var(--laranja); }
