@@ -194,5 +194,55 @@ window.App = window.App || {};
     return { blob: rel.blob(), nome: P_.nomeArquivo('Relatório completo', data, nomeFazenda) };
   }
 
-  A.pdfRelatorios = { completo, miniatura };
+  // GASTO POR SEMANA: uma linha por semana desde a primeira mistura + total geral (entra o resultado de historico())
+  async function historico(h) {
+    const P_ = P();
+    const { num, reais, kg, COR } = P_;
+    const [jsPDF, png] = await Promise.all([P_.carregar(), P_.logo()]);
+    const rel = new P_.Relatorio(jsPDF, { paginas: true });
+    const tt = h.total;
+    const desde = tt.desde ? `${ddmm(new Date(tt.desde).toISOString())}/${new Date(tt.desde).getFullYear()}` : '-';
+    const agora = Date.now();
+    rel.cabecalho('Gasto por semana', `${h.nomeFazenda || 'Fazenda'} · desde ${desde}`, png);
+    rel.numeros([
+      { rotulo: 'Gasto total', valor: reais(tt.gasto, 0) + (tt.gastoIncompleto ? ' +' : ''), detalhe: tt.gastoEstimado ? 'parte estimada' : 'pelo preço pago', destaque: true },
+      { rotulo: 'Média por semana', valor: reais(tt.semanas ? tt.gasto / tt.semanas : 0, 0), detalhe: `${tt.semanas} ${tt.semanas === 1 ? 'semana' : 'semanas'}`, destaque: true },
+      { rotulo: 'Sal feito', valor: kg(tt.kgFeitos), detalhe: `${tt.misturas} misturas` },
+      { rotulo: 'Perdas', valor: reais(tt.perdasReais, 0) + (tt.perdasIncompleto ? ' +' : ''), detalhe: `${tt.problemas} ${tt.problemas === 1 ? 'problema' : 'problemas'}` },
+    ]);
+    if (rel.secao('Semana a semana', 'segunda a domingo · a mais nova primeiro')) {
+      const colunas = [
+        { t: 'Semana', w: 0.2 }, { t: 'Misturas', w: 0.1, al: 'right' }, { t: 'Sal feito', w: 0.13, al: 'right' },
+        { t: 'Gasto', w: 0.15, al: 'right' }, { t: '', w: 0.13, al: 'center' }, { t: 'Perdas', w: 0.13, al: 'right' }, { t: 'R$/cab/dia', w: 0.16, al: 'right' },
+      ];
+      rel.linha(colunas.map((c) => Object.assign({}, c, { cor: COR.tinta2, b: true })), { tam: 8, alt: 6 });
+      h.semanas.forEach((s) => {
+        rel.linha([
+          { t: `${s.rotulo}/${String(s.ano).slice(2)}${s.emAndamento ? ' *' : ''}`, w: 0.2, b: true, tam: 10 },
+          { t: String(s.misturas), w: 0.1, al: 'right' },
+          { t: kg(s.kgFeitos), w: 0.13, al: 'right' },
+          { t: reais(s.gasto, 0), w: 0.15, al: 'right', b: true },
+          s.gastoEstimado ? { t: 'ESTIMADO', w: 0.13, selo: 'laranja', al: 'center' } : { t: '', w: 0.13 },
+          { t: s.perdasReais === null ? null : reais(s.perdasReais, 0), w: 0.13, al: 'right', cor: COR.tinta2 },
+          { t: s.custoCabDia === null ? null : reais(s.custoCabDia, 2), w: 0.16, al: 'right' },
+        ]);
+      });
+      rel.linha([
+        { t: 'Total', w: 0.2, b: true }, { t: String(tt.misturas), w: 0.1, al: 'right', b: true }, { t: kg(tt.kgFeitos), w: 0.13, al: 'right', b: true },
+        { t: reais(tt.gasto, 0) + (tt.gastoIncompleto ? ' +' : ''), w: 0.15, al: 'right', b: true }, { t: '', w: 0.13 },
+        { t: reais(tt.perdasReais, 0), w: 0.13, al: 'right', b: true },
+        { t: tt.custoCabDia === null ? null : reais(tt.custoCabDia, 2), w: 0.16, al: 'right', b: true },
+      ], { traco: false, fundo: COR.creme });
+      rel.y += 2;
+      if (h.semanas.some((s) => s.emAndamento)) rel.frase('* semana em andamento (até hoje).');
+      rel.frase('Gasto = insumos colocados nas misturas, pelo custo do dia de cada mistura (média das compras no galpão). ESTIMADO = alguma compra sem preço pago: usou o preço cadastrado.');
+      rel.frase('R$/cab/dia do total = média das semanas. "+" ou "sem dado" = falta preço de algum insumo.');
+    }
+    rel.rodapeTodas(`Gerado pelo Cocho em ${P_.dataHora(agora)}.`);
+    const d = new Date(agora);
+    const data = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    return { blob: rel.blob(), nome: P_.nomeArquivo('Gasto por semana', data, h.nomeFazenda) };
+  }
+
+  A.pdfRelatorios = { completo, historico, miniatura };
 })();

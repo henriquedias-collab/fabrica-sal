@@ -552,11 +552,69 @@ window.App = window.App || {};
       exemplo: false,
     };
     if (pessoa && pessoa.id !== m.pessoaId) { reg.terminadaPorId = pessoa.id; reg.terminadaPorNome = pessoa.nome; }
+    // Custo de cada insumo NESTE dia (custo médio do galpão): fica gravado e o gasto da mistura não muda mais
+    try { reg.itens = await precificarMistura(reg); } catch (e) { console.warn('custo da mistura:', e); }
     await App.db.transacao(['misturas', 'config'], (l) => {
       l('misturas').put(reg);
       l('config').delete(CHAVE_ANDAMENTO);
     });
     return reg;
+  }
+
+  // ---------- custo gravado na mistura e preço pago nas compras (contas em custo-calculo.js) ----------
+
+  async function dadosDeCusto() {
+    const [insumos, entradas, misturas, contagens] = await Promise.all(
+      ['insumos', 'entradas', 'misturas', 'contagens'].map((n) => App.db.todos(n)));
+    return { insumos, entradas, misturas, contagens };
+  }
+
+  // Itens da mistura com precoKg (R$/kg naquele dia) e precoEstimado
+  async function precificarMistura(reg, dados) {
+    const d = dados || await dadosDeCusto();
+    const outras = d.misturas.filter((m) => m.id !== reg.id);
+    return App.custoCalc.precificar(reg, Object.assign({}, d, { misturas: outras.concat(reg) }));
+  }
+
+  // Depois de informar um preço pago: refaz SÓ os itens que estavam estimados. O que veio do preço pago não muda.
+  // Exceção: CORREÇÃO de um preço já informado (correcao = { insumoId, desde }): refaz também os itens daquele
+  // insumo nas misturas a partir daquela compra (o preço errado não pode ficar gravado).
+  // Mistura antiga, sem custo gravado, continua como está (estimado pelo preço de hoje).
+  async function recalcularEstimados(correcao) {
+    const d = await dadosDeCusto();
+    const mudadas = [];
+    const refazer = (m, it) => typeof it.precoEstimado === 'boolean' && (it.precoEstimado === true
+      || (correcao && it.insumoId === correcao.insumoId && m.fim >= correcao.desde));
+    d.misturas.forEach((m) => {
+      if (!(m.itens || []).some((it) => refazer(m, it))) return;
+      const novos = App.custoCalc.precificar(m, d);
+      let mudou = false;
+      const itens = m.itens.map((it, k) => {
+        if (!refazer(m, it)) return it;
+        const n = novos[k];
+        if (n.precoKg !== it.precoKg || n.precoEstimado !== it.precoEstimado) mudou = true;
+        return Object.assign({}, it, { precoKg: n.precoKg, precoEstimado: n.precoEstimado });
+      });
+      if (mudou) mudadas.push(Object.assign({}, m, { itens }));
+    });
+    if (mudadas.length) await App.db.transacao(['misturas'], (l) => mudadas.forEach((m) => l('misturas').put(m)));
+    return mudadas.length;
+  }
+
+  // PREÇO PAGO numa chegada (R$/kg; null = tirar). Se for a compra mais recente com preço, vira o preço cadastrado.
+  async function informarPrecoCompra(entradaId, precoKg) {
+    const e = await App.db.pegar('entradas', entradaId);
+    if (!e) throw new Error('Chegada não encontrada');
+    const novo = Object.assign({}, e, { precoKg: precoKg > 0 ? Math.round(precoKg * 10000) / 10000 : null });
+    const outras = (await App.db.todos('entradas')).filter((x) => x.insumoId === e.insumoId && x.id !== e.id && x.precoKg > 0);
+    const maisNova = novo.precoKg > 0 && !outras.some((x) => x.quando > e.quando);
+    const ins = maisNova ? await App.db.pegar('insumos', e.insumoId) : null;
+    await App.db.transacao(['entradas', 'insumos'], (l) => {
+      l('entradas').put(novo);
+      if (ins) l('insumos').put(Object.assign({}, ins, { precoKg: novo.precoKg, precoPorUnidade: null }));
+    });
+    const misturas = await recalcularEstimados(e.precoKg > 0 ? { insumoId: e.insumoId, desde: e.quando } : null);
+    return { entrada: novo, cadastroAtualizado: !!ins, misturas };
   }
 
   // Chegou insumo: soma ao estoque (sempre em kg) e registra a entrada (tudo junto).
@@ -622,5 +680,6 @@ window.App = window.App || {};
     baseKg, tamanhos, tamanhoPadrao, escalarFormula,
     montarMistura, novaMistura, progresso, totalColocadoKg, gravarAndamento, carregarAndamento, apagarAndamento,
     faltando, concluirMistura, salvarEntrada, iniciais, quando,
+    precificarMistura, recalcularEstimados, informarPrecoCompra, dadosDeCusto,
   };
 })();

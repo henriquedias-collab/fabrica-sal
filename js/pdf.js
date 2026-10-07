@@ -144,7 +144,7 @@ window.App = window.App || {};
         this.cor(c1); this.fonte(8, true); this.txt(k.rotulo.toUpperCase(), x + 4, this.y + 6);
         if (k.valor === null || k.valor === undefined) { this.cor(c1); this.fonte(14, false); this.txt(SEM, x + 4, this.y + 15); }
         else { this.cor(c2); this.fonte(19, true); this.txt(k.valor, x + 4, this.y + 15.5); }
-        if (k.detalhe) { this.cor(c1); this.fonte(8, false); this.txt(k.detalhe, x + 4, this.y + 21.5, { maxWidth: lw - 8 }); }
+        if (k.detalhe) { this.cor(c1); this.fonte(8, false); this.txt(this.cortar(k.detalhe, lw - 8), x + 4, this.y + 21.5); }
       });
       this.y += alt + 6;
     }
@@ -205,7 +205,8 @@ window.App = window.App || {};
       const o = op || {};
       if (!this.cabe(6)) return false;
       this.fonte(o.tam || 9, o.b); this.cor(o.cor || COR.tinta2);
-      this.txt(s, this.m, this.y + 3.5, { maxWidth: this.w });
+      const ls = this.doc.splitTextToSize(texto(s), this.w); // texto longo: várias linhas, sem sobrepor
+      ls.forEach((l, k) => { if (k) this.cabe(4.2); this.doc.text(l, this.m, this.y + 3.5 + (k ? 0 : 0)); if (k < ls.length - 1) this.y += 4.2; });
       this.y += o.alt || 6;
       return true;
     }
@@ -247,7 +248,7 @@ window.App = window.App || {};
 
     const p = s.perdas;
     rel.numeros([
-      { rotulo: 'Gasto da semana', valor: reais(s.gasto, 0), detalhe: `${s.misturas} misturas · ${kg(s.kgFeitos)} de sal`, destaque: true },
+      { rotulo: 'Gasto da semana', valor: reais(s.gasto, 0), detalhe: `${s.misturas} misturas · ${kg(s.kgFeitos)} de sal${s.gastoEstimado ? ' · ESTIMADO' : ''}`, destaque: true },
       { rotulo: 'Custo por cabeça/dia', valor: reais(s.custoCabDia, 2), detalhe: 'média dos lotes com sal', destaque: true },
       { rotulo: 'Perdas', valor: p.reais === null ? null : reais(p.reais, 0), detalhe: `${p.quantidade} ${p.quantidade === 1 ? 'problema' : 'problemas'} · ${p.kg === null ? 'kg ' + SEM : kg(p.kg)}` },
     ]);
@@ -326,7 +327,7 @@ window.App = window.App || {};
       }
     }
 
-    rel.rodape(`Gerado pelo Cocho em ${dataHora(Date.now())}. Custos pelos preços de hoje dos insumos. "sem dado" = falta preço ou informação.`);
+    rel.rodape(`Gerado pelo Cocho em ${dataHora(Date.now())}. Gasto pelo custo do dia de cada mistura (compras no galpão; ESTIMADO = sem preço pago). Perdas e compras pelos preços de hoje. "sem dado" = falta preço ou informação.`);
     return { blob: rel.blob(), nome: nomeArquivo('Resumo', r.periodo.rotulo.replace(/\//g, '-'), r.nomeFazenda) };
   }
 

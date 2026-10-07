@@ -36,7 +36,7 @@ window.App = window.App || {};
   }
 
   Object.assign(A.telas, {
-    async resumo({ semana }) {
+    async resumo({ semana, volta }) {
       const r = await resumoDaSemana(semana);
       const s = r.semana;
       const DIA = A.resumoCalc.DIA;
@@ -45,7 +45,7 @@ window.App = window.App || {};
       const qual = r.periodo.emAndamento ? `esta semana (até hoje, ${r.periodo.dias} ${r.periodo.dias === 1 ? 'dia' : 'dias'})` : ehUltimaCompleta ? 'semana passada' : 'semana anterior';
       const p = s.perdas;
       const falas = [`Resumo da ${qual}, de ${r.periodo.rotulo}.`];
-      falas.push(s.gasto !== null ? `Gasto com insumos: ${n(Math.round(s.gasto))} reais.` : 'Gasto: sem dado, falta preço.');
+      falas.push(s.gasto !== null ? `Gasto com insumos: ${n(Math.round(s.gasto))} reais${s.gastoEstimado ? ', estimado' : ''}.` : 'Gasto: sem dado, falta preço.');
       falas.push(`${p.quantidade} ${p.quantidade === 1 ? 'problema' : 'problemas'}.`);
       if (s.custoCabDia !== null) falas.push(`Custo por cabeça por dia: ${U().reaisTexto(s.custoCabDia, 2)} reais.`);
       const acima = s.lotes.filter((l) => l.nivel === 'acima').map((l) => l.nome);
@@ -106,7 +106,7 @@ window.App = window.App || {};
 
   <section class="secao" aria-labelledby="t-gasto">
     <h2 id="t-gasto">Gasto da semana</h2>
-    <div class="numero-grande destaque-terra"><span class="valor">${s.gasto !== null ? U().reaisQ(s.gasto, '', 0) : 'sem dado'}</span>
+    <div class="numero-grande destaque-terra"><span class="valor">${s.gasto !== null ? U().reaisQ(s.gasto, '', 0) : 'sem dado'}</span>${s.gastoEstimado ? ' <span class="etiqueta laranja estimado">estimado</span>' : ''}
       <span class="legenda">${s.gasto !== null ? `insumos colocados em ${U().q(s.misturas, s.misturas === 1 ? 'mistura' : 'misturas')} · ${U().kgQ(s.kgFeitos)} de sal` : `falta preço: ${esc(s.semPreco.join(', '))}`}</span></div>
   </section>
 
@@ -123,7 +123,7 @@ window.App = window.App || {};
 
   <section class="secao" aria-labelledby="t-cabeca">
     <h2 id="t-cabeca">Custo por cabeça por dia</h2>
-    <div class="numero-grande destaque-terra"><span class="valor">${s.custoCabDia !== null ? U().reaisQ(s.custoCabDia, '', 2) : 'sem dado'}</span>
+    <div class="numero-grande destaque-terra"><span class="valor">${s.custoCabDia !== null ? U().reaisQ(s.custoCabDia, '', 2) : 'sem dado'}</span>${s.custoCabDiaEstimado ? ' <span class="etiqueta laranja estimado">estimado</span>' : ''}
       <span class="legenda">média dos lotes que receberam sal (${r.periodo.dias} ${r.periodo.dias === 1 ? 'dia' : 'dias'})</span></div>
   </section>
 
@@ -162,9 +162,9 @@ window.App = window.App || {};
 </main>`,
         async ligar(raiz) {
           const DIA2 = A.resumoCalc.DIA;
-          U().ao(raiz, '[data-acao=voltar]', () => A.ir('dono'));
-          U().ao(raiz, '[data-acao=semana-antes]', () => A.ir('resumo', { semana: r.periodo.inicio - 7 * DIA2 }));
-          U().ao(raiz, '[data-acao=semana-depois]', () => A.ir('resumo', { semana: r.periodo.inicio + 7 * DIA2 }));
+          U().ao(raiz, '[data-acao=voltar]', () => A.ir(volta || 'dono'));
+          U().ao(raiz, '[data-acao=semana-antes]', () => A.ir('resumo', { semana: r.periodo.inicio - 7 * DIA2, volta }));
+          U().ao(raiz, '[data-acao=semana-depois]', () => A.ir('resumo', { semana: r.periodo.inicio + 7 * DIA2, volta }));
           U().ao(raiz, '[data-perda]', (b) => A.ir('perda', { problemaId: b.dataset.perda, semana: r.periodo.inicio }));
           // O PDF já começa a ser feito ao abrir a tela: o celular só deixa compartilhar logo depois do toque
           let feito = null;

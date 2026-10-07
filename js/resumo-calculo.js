@@ -24,16 +24,21 @@
     const k = kgSaco(ins);
     return k ? ins.precoPorUnidade / k : ins.precoPorUnidade;
   }
-  // Custo de itens [{ insumoId, kg }]: null se faltar preço de algum insumo (semPreco lista os nomes)
+  // Custo de itens de uma mistura [{ insumoId, kg, precoKg?, precoEstimado? }]: usa o custo GRAVADO na mistura
+  // (custo médio do galpão naquele dia, custo-calculo.js). Mistura antiga, sem custo gravado: preço de hoje = estimado.
+  // null se faltar preço de algum insumo (semPreco lista os nomes). estimado = algum item não veio do preço pago.
   function custo(itens, insPorId) {
     let total = 0;
+    let estimado = false;
     const semPreco = [];
     itens.forEach((it) => {
       const ins = insPorId[it.insumoId];
-      const p = precoKg(ins);
+      const gravado = typeof it.precoKg === 'number' && it.precoKg > 0;
+      const p = gravado ? it.precoKg : precoKg(ins);
+      if (!gravado || it.precoEstimado) estimado = true;
       if (p === null) { const nome = ins ? ins.nome : (it.nome || '?'); if (!semPreco.includes(nome)) semPreco.push(nome); } else total += (it.kg || 0) * p;
     });
-    return { total: semPreco.length ? null : total, semPreco };
+    return { total: semPreco.length ? null : total, semPreco, estimado: estimado && (itens || []).some((it) => (it.kg || 0) > 0) };
   }
 
   // Segunda-feira 00:00 da semana de uma data (hora local)
@@ -53,11 +58,13 @@
     const dias = Math.max(1, Math.min(7, Math.ceil((fim - inicio) / DIA))); // semana em andamento: só os dias que passaram
     const misturas = dados.misturas.filter((m) => t(m.fim) >= inicio && t(m.fim) < fimSemana);
 
-    // Gasto: insumos colocados nas misturas da semana (pelos preços de hoje)
+    // Gasto: insumos colocados nas misturas da semana, pelo custo gravado em cada mistura
     let gasto = 0;
+    let gastoEstimado = false;
     const semPreco = [];
     misturas.forEach((m) => {
       const c = custo(m.itens, insPorId);
+      if (c.estimado) gastoEstimado = true;
       c.semPreco.forEach((n) => { if (!semPreco.includes(n)) semPreco.push(n); });
       if (c.total !== null) gasto += c.total;
     });
@@ -69,7 +76,8 @@
       const kg = daqui.reduce((s, m) => s + (m.totalKg || 0), 0);
       let custoLote = 0;
       let custoOk = true;
-      daqui.forEach((m) => { const c = custo(m.itens, insPorId); if (c.total === null) custoOk = false; else custoLote += c.total; });
+      let custoEstimado = false;
+      daqui.forEach((m) => { const c = custo(m.itens, insPorId); if (c.estimado) custoEstimado = true; if (c.total === null) custoOk = false; else custoLote += c.total; });
       const cab = p.cabecas > 0 ? p.cabecas : 0;
       const gramas = cab && kg > 0 ? Math.round((kg * 1000) / cab / dias) : null;
       const custoCabDia = cab && kg > 0 && custoOk ? custoLote / cab / dias : null;
@@ -79,7 +87,7 @@
         const dif = gramas / meta - 1;
         nivel = Math.abs(dif) <= TOLERANCIA_META ? 'normal' : dif > 0 ? 'acima' : 'abaixo';
       }
-      return { id: p.id, numero: p.numero, nome: p.nome, cor: p.cor, cabecas: cab, kg, gramas, meta: meta > 0 ? meta : null, nivel, custo: custoOk ? custoLote : null, custoCabDia };
+      return { id: p.id, numero: p.numero, nome: p.nome, cor: p.cor, cabecas: cab, kg, gramas, meta: meta > 0 ? meta : null, nivel, custo: custoOk ? custoLote : null, custoEstimado, custoCabDia };
     });
 
     // Custo por cabeça por dia (todos os lotes que receberam sal)
@@ -127,8 +135,8 @@
     return {
       inicio, fim: fimSemana, dias, emAndamento: agora < fimSemana,
       misturas: misturas.length, kgFeitos,
-      gasto: semPreco.length ? null : gasto, semPreco,
-      custoCabDia, lotes, perdas,
+      gasto: semPreco.length ? null : gasto, gastoEstimado: gastoEstimado && !semPreco.length, semPreco,
+      custoCabDia, custoCabDiaEstimado: custoCabDia !== null && comSal.some((l) => l.custoEstimado), lotes, perdas,
     };
   }
 
@@ -196,6 +204,48 @@
     };
   }
 
+  // GASTO POR SEMANA: todas as semanas desde a primeira mistura até a semana de hoje (a mais nova primeiro),
+  // com o total geral. Mesmas contas do resumo da semana. ENTRADA: os mesmos dados de calcular().
+  function historico(dados, opcoes) {
+    const agora = (opcoes && opcoes.agora) || Date.now();
+    const insPorId = {};
+    dados.insumos.forEach((i) => { insPorId[i.id] = i; });
+    const datas = dados.misturas.map((m) => t(m.fim)).filter((x) => x <= agora);
+    const semanas = [];
+    if (datas.length) {
+      const primeira = inicioDaSemana(Math.min(...datas));
+      for (let ini = inicioDaSemana(agora); ini >= primeira; ini = inicioDaSemana(ini - 3 * DIA)) {
+        const s = numerosDaSemana(dados, ini, agora, insPorId);
+        const domingo = s.fim - DIA;
+        semanas.push({
+          inicio: ini, rotulo: `${ddmm(ini)} a ${ddmm(domingo)}`, ano: new Date(domingo).getFullYear(),
+          emAndamento: s.emAndamento, dias: s.dias,
+          misturas: s.misturas, kgFeitos: s.kgFeitos, gasto: s.gasto, gastoEstimado: s.gastoEstimado, semPreco: s.semPreco,
+          problemas: s.perdas.quantidade, perdasKg: s.perdas.kg, perdasReais: s.perdas.reais,
+          custoCabDia: s.custoCabDia, custoCabDiaEstimado: s.custoCabDiaEstimado,
+        });
+      }
+    }
+    const soma = (campo) => semanas.reduce((a, s) => a + (s[campo] || 0), 0);
+    const comCusto = semanas.filter((s) => s.custoCabDia !== null);
+    return {
+      versao: 1,
+      nomeFazenda: dados.nomeFazenda || '',
+      semanas,
+      total: {
+        semanas: semanas.length,
+        desde: semanas.length ? semanas[semanas.length - 1].inicio : null,
+        misturas: soma('misturas'), kgFeitos: soma('kgFeitos'), problemas: soma('problemas'),
+        gasto: soma('gasto'), gastoIncompleto: semanas.some((s) => s.gasto === null), gastoEstimado: semanas.some((s) => s.gastoEstimado),
+        perdasReais: soma('perdasReais'), perdasIncompleto: semanas.some((s) => s.perdasReais === null),
+        // média das semanas que têm custo por cabeça
+        custoCabDia: comCusto.length ? comCusto.reduce((a, s) => a + s.custoCabDia, 0) / comCusto.length : null,
+        custoCabDiaEstimado: comCusto.some((s) => s.custoCabDiaEstimado),
+      },
+      geradoEm: new Date(agora).toISOString(),
+    };
+  }
+
   // MENSAGEM CURTA para o WhatsApp (3 a 5 linhas com os números principais). Entra o resultado de calcular().
   // Também é pura: o envio automático na nuvem usa a mesma mensagem.
   function mensagem(r) {
@@ -206,7 +256,7 @@
     const ano = new Date(r.periodo.inicio).getFullYear();
     const linhas = [
       `*Cocho${r.nomeFazenda ? ' - ' + r.nomeFazenda : ''}* - Resumo de ${r.periodo.rotulo}/${ano}${r.periodo.emAndamento ? ' (até hoje)' : ''}`,
-      `Gasto: ${reais(s.gasto)} · ${s.misturas} ${s.misturas === 1 ? 'mistura' : 'misturas'} · ${num(s.kgFeitos)} kg de sal`,
+      `Gasto: ${reais(s.gasto)}${s.gastoEstimado ? " (estimado)" : ""} · ${s.misturas} ${s.misturas === 1 ? 'mistura' : 'misturas'} · ${num(s.kgFeitos)} kg de sal`,
       `Problemas: ${p.quantidade} · perdas ${p.reais === null ? 'sem dado' : reais(p.reais)}`,
       `Custo por cabeça/dia: ${reais(s.custoCabDia, 2)}`,
     ];
@@ -219,7 +269,23 @@
     return linhas.join('\n');
   }
 
-  const api = { calcular, mensagem, inicioDaSemana, DIA };
+  // MENSAGEM CURTA do GASTO POR SEMANA (entra o resultado de historico())
+  function mensagemHistorico(h) {
+    const num = (x, casas) => Number(x).toLocaleString('pt-BR', { minimumFractionDigits: casas || 0, maximumFractionDigits: casas || 0 });
+    const tt = h.total;
+    const est = (b) => (b ? ' (estimado)' : '');
+    const desde = tt.desde ? ddmm(tt.desde) + '/' + new Date(tt.desde).getFullYear() : '-';
+    const linhas = [
+      `*Cocho${h.nomeFazenda ? ' - ' + h.nomeFazenda : ''}* - Gasto por semana desde ${desde}`,
+      `Total: R$ ${num(tt.gasto)}${tt.gastoIncompleto ? ' + sem dado' : ''}${est(tt.gastoEstimado)} · ${tt.semanas} ${tt.semanas === 1 ? 'semana' : 'semanas'} · ${num(tt.kgFeitos)} kg de sal`,
+      `Média por semana: R$ ${num(tt.semanas ? tt.gasto / tt.semanas : 0)}`,
+    ];
+    const ultima = h.semanas.find((s) => !s.emAndamento);
+    if (ultima) linhas.push(`Última semana (${ultima.rotulo}): ${ultima.gasto === null ? 'sem dado' : 'R$ ' + num(ultima.gasto)}${est(ultima.gastoEstimado)}`);
+    return linhas.join('\n');
+  }
+
+  const api = { calcular, historico, mensagem, mensagemHistorico, inicioDaSemana, DIA };
   if (raiz.App) raiz.App.resumoCalc = api; // no app (navegador)
   raiz.CochoResumo = api; // fora do app (ex.: Google Apps Script)
 })(typeof window !== 'undefined' ? (window.App = window.App || {}, window) : this);

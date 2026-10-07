@@ -246,6 +246,10 @@ window.App = window.App || {};
   <button class="btn-menu" data-ir="${acao}">${ic(icone, 40, 1.8)}<span>${titulo}<small>${detalhe}</small></span>${ic('seguir', 28, 2.4)}</button>`;
       const n = (lista, um, varios) => `${lista.length} ${lista.length === 1 ? um : varios}`;
       const avisoCopia = await A.copia.aviso();
+      const semPreco = (await A.gasto.comprasSemPreco()).length;
+      const avisoPreco = semPreco ? `
+  <button class="alerta laranja alerta-preco" data-ir="comprasSemPreco">${ic('atencao', 40, 2.4)}<div>
+    <b>${semPreco} ${semPreco === 1 ? 'chegada sem preço pago' : 'chegadas sem preço pago'}</b><span>Informe quanto pagou: o gasto fica exato.</span></div></button>` : '';
       const ep = await dadosEpoca();
       return {
         fala: 'Área do dono. Escolha o que quer cadastrar ou conferir.' +
@@ -256,7 +260,9 @@ window.App = window.App || {};
   ${U().marca()}
   ${topo('ÁREA DO DONO')}
   ${avisoCopia}
+  ${avisoPreco}
   <button class="btn-menu painel-menu" data-ir="resumo">${ic('calendario', 40, 2.2)}<span>Resumo da semana<small>Gasto, perdas, custo por cabeça, lotes e compras</small></span>${ic('seguir', 28, 2.4)}</button>
+  <button class="btn-menu painel-menu" data-ir="gastoSemanas">${ic('dinheiro', 40, 2)}<span>Gasto por semana<small>Todas as semanas desde o começo, com total</small></span>${ic('seguir', 28, 2.4)}</button>
   <button class="btn-menu painel-menu" data-ir="painel">${ic('grafico', 40, 2.2)}<span>Painel<small>Produção, estoque, consumo, compras e problemas</small></span>${ic('seguir', 28, 2.4)}</button>
   ${cartaoEpoca(ep.epoca, ep.aviso)}
   <button class="btn" data-ir="exportarCopia">${ic('baixar', 32, 2.4)} EXPORTAR CÓPIA</button>

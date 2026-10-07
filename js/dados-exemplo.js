@@ -146,7 +146,8 @@ window.App = window.App || {};
     const porId = {};
     insumos.forEach((i) => { porId[i.id] = i; });
     // anterior = saco atual do insumo antes desta chegada (se mudou, a chegada aparece como "saco atual mudou")
-    const chegou = (k, insumoId, quantidade, pesoCada, d, quem, anterior) => {
+    // precoKg = preço PAGO nesta compra (R$/kg), informado pelo dono; null = ainda sem preço pago
+    const chegou = (k, insumoId, quantidade, pesoCada, d, quem, anterior, precoKg) => {
       const ins = porId[insumoId];
       const kg = quantidade * pesoCada;
       const nomeUn = quantidade === 1 ? 'saco' : 'sacos';
@@ -155,16 +156,17 @@ window.App = window.App || {};
         kgPorUnidade: pesoCada, kgPorUnidadeCadastro: anterior || pesoCada, pesoDiferente: Math.abs(pesoCada - (anterior || pesoCada)) > 0.05, kg,
         texto: `${quantidade} ${nomeUn} × ${App.calc.numero(pesoCada)} kg = ${App.calc.numero(kg)} kg`,
         pessoaId: quem.id, pessoaNome: quem.nome, quando: new Date(quandoDias(d, 11, 20)).toISOString(), exemplo: true,
+        precoKg: precoKg || null,
       };
     };
     return [
-      chegou(1, 'ex-nucleo', 20, 25, 40, pessoas[0]),
-      chegou(2, 'ex-ureia', 10, 25, 35, pessoas[1]),
-      chegou(3, 'ex-sal', 80, 25, 30, pessoas[0]),
-      chegou(4, 'ex-farelo', 40, 50, 25, pessoas[1]),
-      chegou(5, 'ex-nucleo-prot', 60, 25, 20, pessoas[0]),
-      chegou(6, 'ex-milho', 10, 50, 15, pessoas[1], 60), // saca de 50 kg: o saco atual passou de 60 para 50
-      chegou(7, 'ex-milho', 30, 60, 8, pessoas[0], 50), // saca de 60 kg: voltou a ser o saco atual (compra mais recente)
+      chegou(1, 'ex-nucleo', 20, 25, 40, pessoas[0], null, 12.8),
+      chegou(2, 'ex-ureia', 10, 25, 35, pessoas[1], null, 9.6),
+      chegou(3, 'ex-sal', 80, 25, 30, pessoas[0], null, 0.58),
+      chegou(4, 'ex-farelo', 40, 50, 25, pessoas[1], null, 2.05),
+      chegou(5, 'ex-nucleo-prot', 60, 25, 20, pessoas[0], null, 7.4),
+      chegou(6, 'ex-milho', 10, 50, 25, pessoas[1], 60, 1.08), // saca de 50 kg: o saco atual passou de 60 para 50
+      chegou(7, 'ex-milho', 20, 60, 8, pessoas[0], 50), // saca de 60 kg: voltou a ser o saco atual. SEM preço pago (demonstração)
     ];
   }
 
@@ -215,6 +217,31 @@ window.App = window.App || {};
     ];
   }
 
+  // Para o custo das misturas de exemplo sair do preço pago: o estoque que já existia antes do histórico vira uma
+  // compra antiga (5% mais barata que o cadastro; o núcleo reprodução continua sem preço) e cada mistura grava o
+  // custo do dia, como o app faz ao concluir uma mistura (custo-calculo.js).
+  function precosDoExemplo(dados) {
+    const t = (iso) => new Date(iso).getTime();
+    dados.insumos.forEach((ins) => {
+      let soma = 0;
+      dados.entradas.forEach((e) => { if (e.insumoId === ins.id) soma += e.kg; });
+      dados.misturas.forEach((m) => m.itens.forEach((it) => { if (it.insumoId === ins.id) soma -= it.kg; }));
+      dados.contagens.forEach((c) => { if (c.insumoId === ins.id) soma += c.depoisKg - c.antesKg; });
+      const inicial = Math.round((ins.estoqueKg - soma) * 10) / 10;
+      if (!(inicial > 0) || !(ins.precoKg > 0)) return;
+      const kgSaco = ins.kgPorSaco || 25;
+      const sacos = Math.round(inicial / kgSaco * 10) / 10;
+      dados.entradas.push({
+        id: 'ex-entrada-ini-' + ins.id, insumoId: ins.id, insumoNome: ins.nome, quantidade: sacos, unidade: 'saco',
+        kgPorUnidade: kgSaco, kgPorUnidadeCadastro: kgSaco, pesoDiferente: false, kg: inicial,
+        texto: `Estoque inicial: ${App.calc.numero(inicial)} kg`, pessoaId: null, pessoaNome: 'Dono',
+        quando: new Date(Math.min(...dados.misturas.map((m) => t(m.inicio))) - 3 * 86400000).toISOString(),
+        precoKg: Math.round(ins.precoKg * 0.95 * 10000) / 10000, exemplo: true,
+      });
+    });
+    dados.misturas.forEach((m) => { m.itens = App.custoCalc.precificar(m, dados); });
+  }
+
   function marcar(lista) {
     return lista.map((x) => Object.assign({}, x, { exemplo: true }));
   }
@@ -230,6 +257,7 @@ window.App = window.App || {};
       contagens: contagensExemplo(),
       problemas: problemasExemplo(),
     };
+    precosDoExemplo(dados);
     const nomes = Object.keys(dados).concat('config');
     await App.db.transacao(nomes, (l) => {
       Object.keys(dados).forEach((n) => dados[n].forEach((x) => l(n).put(x)));

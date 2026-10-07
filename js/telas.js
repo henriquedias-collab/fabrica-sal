@@ -32,6 +32,7 @@ window.App = window.App || {};
     pessoa: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
     chave: '<circle cx="8" cy="15" r="4"/><path d="M11 12 20 3"/><path d="M17 6l3 3"/>',
     mensagem: '<path d="M4 5h16v11H8l-4 4V5z"/>',
+    dinheiro: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v5M17.5 9.5v5"/>',
     whats: '<path d="M4.5 20l1.2-4A8 8 0 1 1 8.4 18.8z"/><path d="M9.2 8.6c-.2 2.9 2.6 6.2 6 6.2l.9-1.4-1.9-1-1 .9c-1-.5-1.7-1.2-2.2-2.2l.9-1-1-1.9z"/>',
     ajustes: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
     pasto: '<path d="M3 20h18"/><path d="M6 20v-5M6 15c0-2 1-3 2-4M6 15c0-2-1-3-2-4"/><path d="M15 20v-8M15 12c0-2.5 1.5-4 3-5M15 12c0-2.5-1.5-4-3-5"/>',
@@ -1056,7 +1057,8 @@ window.App = window.App || {};
     <h2>Chegadas de insumo: ${entradas.length}</h2>
     <ul class="lista">
       ${entradas.slice(0, 10).map((e) => `<li><b>${esc(C().quando(e.quando))}</b> · ${esc(e.insumoNome)} · ${esc(e.texto)}<br>
-        Recebido por ${esc(e.pessoaNome || '—')}${e.pesoDiferente ? `<br><span class="etiqueta">saco atual mudou: ${C().numero(e.kgPorUnidadeCadastro)} → ${C().numero(e.kgPorUnidade)} kg</span>` : ''}</li>`).join('') || '<li>Nenhuma.</li>'}
+        Recebido por ${esc(e.pessoaNome || '—')}
+        <br>${e.precoKg > 0 ? `Preço pago: ${reaisQ(e.precoKg, '/kg', 2)} <button class="btn-pequeno largo" data-preco="${esc(e.id)}">MUDAR</button>` : `<span class="etiqueta laranja">sem preço pago</span> <button class="btn-pequeno largo" data-preco="${esc(e.id)}">INFORMAR PREÇO</button>`}${e.pesoDiferente ? `<br><span class="etiqueta">saco atual mudou: ${C().numero(e.kgPorUnidadeCadastro)} → ${C().numero(e.kgPorUnidade)} kg</span>` : ''}</li>`).join('') || '<li>Nenhuma.</li>'}
     </ul>
   </section>
   <section class="secao">
@@ -1082,6 +1084,7 @@ window.App = window.App || {};
   </section>` : ''}
 </main>`,
         ligar(r) {
+          ao(r, '[data-preco]', (b) => A.ir('precoCompra', { entradaId: b.dataset.preco, volta: 'registros' }));
           ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           ao(r, '[data-acao=encerrar]', async (b) => {
             const kg = C().totalColocadoKg(andamento);

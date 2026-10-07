@@ -812,3 +812,17 @@ h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .seca
 /* EXPORTAR CÓPIA: "Este arquivo é só para o app. Para ler, use o PDF" (informação, não alerta) */
 .alerta.aviso-leitura { background: var(--cartao); border-color: var(--borda); color: var(--terra-escura); margin-bottom: 14px; }
 .alerta.aviso-leitura span { display: block; color: var(--tinta-2); }
+
+/* GASTO POR SEMANA: cada semana é um botão que abre o resumo dela */
+.lista.semanas li { padding: 0; border: 0; }
+.item-semana { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px;
+  background: var(--cartao); border: 3px solid var(--borda); border-radius: 22px; padding: 12px 16px;
+  box-shadow: 0 4px 0 var(--borda-forte); min-height: 64px; }
+.item-semana:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--borda-forte); }
+.item-semana .gasto-semana { justify-content: flex-start; gap: 10px; }
+.item-semana .gasto-semana .valor { font-size: 28px; font-weight: 700; color: var(--terra-escura); }
+.item-semana .gasto-semana svg { margin-left: auto; color: var(--terra); }
+.etiqueta.estimado { vertical-align: middle; }
+/* Aviso de chegadas sem preço pago (Área do dono): botão amarelo */
+.alerta-preco { width: 100%; text-align: left; font: inherit; cursor: pointer; box-shadow: 0 5px 0 var(--laranja); margin: 10px 0 5px; }
+.alerta-preco span { display: block; }
