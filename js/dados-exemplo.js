@@ -147,7 +147,7 @@ window.App = window.App || {};
     insumos.forEach((i) => { porId[i.id] = i; });
     // anterior = saco atual do insumo antes desta chegada (se mudou, a chegada aparece como "saco atual mudou")
     // precoKg = preço PAGO nesta compra (R$/kg), informado pelo dono; null = ainda sem preço pago
-    const chegou = (k, insumoId, quantidade, pesoCada, d, quem, anterior, precoKg) => {
+    const chegou = (k, insumoId, quantidade, pesoCada, d, quem, anterior, precoKg, fornecedor) => {
       const ins = porId[insumoId];
       const kg = quantidade * pesoCada;
       const nomeUn = quantidade === 1 ? 'saco' : 'sacos';
@@ -156,16 +156,16 @@ window.App = window.App || {};
         kgPorUnidade: pesoCada, kgPorUnidadeCadastro: anterior || pesoCada, pesoDiferente: Math.abs(pesoCada - (anterior || pesoCada)) > 0.05, kg,
         texto: `${quantidade} ${nomeUn} × ${App.calc.numero(pesoCada)} kg = ${App.calc.numero(kg)} kg`,
         pessoaId: quem.id, pessoaNome: quem.nome, quando: new Date(quandoDias(d, 11, 20)).toISOString(), exemplo: true,
-        precoKg: precoKg || null,
+        precoKg: precoKg || null, fornecedor: fornecedor || null,
       };
     };
     return [
-      chegou(1, 'ex-nucleo', 20, 25, 40, pessoas[0], null, 12.8),
-      chegou(2, 'ex-ureia', 10, 25, 35, pessoas[1], null, 9.6),
-      chegou(3, 'ex-sal', 80, 25, 30, pessoas[0], null, 0.58),
-      chegou(4, 'ex-farelo', 40, 50, 25, pessoas[1], null, 2.05),
-      chegou(5, 'ex-nucleo-prot', 60, 25, 20, pessoas[0], null, 7.4),
-      chegou(6, 'ex-milho', 10, 50, 25, pessoas[1], 60, 1.08), // saca de 50 kg: o saco atual passou de 60 para 50
+      chegou(1, 'ex-nucleo', 20, 25, 40, pessoas[0], null, 12.8, 'Agropecuária Boa Vista'),
+      chegou(2, 'ex-ureia', 10, 25, 35, pessoas[1], null, 9.6, 'Cooperativa Regional'),
+      chegou(3, 'ex-sal', 80, 25, 30, pessoas[0], null, 0.58, 'Agropecuária Boa Vista'),
+      chegou(4, 'ex-farelo', 40, 50, 25, pessoas[1], null, 2.05, 'Cooperativa Regional'),
+      chegou(5, 'ex-nucleo-prot', 60, 25, 20, pessoas[0], null, 7.4, 'Agropecuária Boa Vista'),
+      chegou(6, 'ex-milho', 10, 50, 25, pessoas[1], 60, 1.08, 'Cerealista Santa Rita'), // saca de 50 kg: o saco atual passou de 60 para 50
       chegou(7, 'ex-milho', 20, 60, 8, pessoas[0], 50), // saca de 60 kg: voltou a ser o saco atual. SEM preço pago (demonstração)
     ];
   }

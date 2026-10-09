@@ -26,6 +26,19 @@ window.App = window.App || {};
     return (await A.db.todos('entradas')).filter((e) => !(e.precoKg > 0)).sort((a, b) => b.quando.localeCompare(a.quando));
   }
 
+  // Gasto de cada insumo numa semana, numa linha curta: "Sal comum R$ 300 · Ureia R$ 120 (est.) · Núcleo sem preço"
+  function porInsumoCurto(lista) {
+    if (!lista || !lista.length) return '';
+    return `<span class="detalhe por-insumo">${lista.map((x) => `${esc(x.nome)} ${x.reais === null ? SEM_DADO : U().reaisQ(x.reais, '', 0)}${x.reais !== null && x.estimado ? ' <small>(est.)</small>' : ''}`).join(' · ')}</span>`;
+  }
+
+  // Tabela do gasto de cada insumo (total geral)
+  function tabelaPorInsumo(lista) {
+    if (!lista || !lista.length) return '';
+    return `<h3>Gasto por insumo</h3><ul class="lista comparacao">${lista.map((x) => `
+      <li class="linha-dupla"><span>${esc(x.nome)} <small>· ${U().kgQ(x.kg)}</small></span><span>${x.reais === null ? SEM_DADO : U().reaisQ(x.reais, '', 0)}${x.reais !== null && x.estimado ? ' ' + ESTIMADO : ''}</span></li>`).join('')}</ul>`;
+  }
+
   Object.assign(A.telas, {
     // GASTO POR SEMANA
     async gastoSemanas() {
@@ -38,6 +51,8 @@ window.App = window.App || {};
         <span class="linha-dupla gasto-semana"><span class="valor">${s.gasto !== null ? U().reaisQ(s.gasto, '', 0) : 'sem dado'}</span>${s.gastoEstimado ? ESTIMADO : ''}${ic('seguir', 24, 2.4)}</span>
         ${s.gasto === null && s.semPreco.length ? `<span class="detalhe">falta preço: ${esc(s.semPreco.join(', '))}</span>` : ''}
         <span class="detalhe">${U().q(s.misturas, s.misturas === 1 ? 'mistura' : 'misturas')} · ${U().kgQ(s.kgFeitos)} de sal · perdas ${reais(s.perdasReais)} · ${s.custoCabDia !== null ? U().reaisQ(s.custoCabDia, '/cab/dia', 2) : 'custo/cab/dia: ' + SEM_DADO}</span>
+        <span class="detalhe">Custo do kg de sal: ${s.custoKgSal !== null ? U().reaisQ(s.custoKgSal, '/kg', 2) : SEM_DADO}</span>
+        ${porInsumoCurto(s.porInsumo)}
       </button></li>`;
       const fala = h.semanas.length
         ? `Gasto por semana. ${h.semanas.length} semanas desde a primeira mistura. Gasto total: ${n(Math.round(tt.gasto))} reais${tt.gastoEstimado ? ', em parte estimado' : ''}. Toque numa semana para ver o resumo dela.`
@@ -59,7 +74,9 @@ window.App = window.App || {};
       <li class="linha-dupla"><span>Média por semana</span><b>${U().reaisQ(tt.gasto / tt.semanas, '', 0)}</b></li>
       <li class="linha-dupla"><span>Perdas</span><span>${U().reaisQ(tt.perdasReais, '', 0)}${tt.perdasIncompleto ? ' + ' + SEM_DADO : ''} · ${U().q(tt.problemas, tt.problemas === 1 ? 'problema' : 'problemas')}</span></li>
       <li class="linha-dupla"><span>Custo/cabeça/dia (média)</span><span>${tt.custoCabDia !== null ? U().reaisQ(tt.custoCabDia, '', 2) : SEM_DADO}</span></li>
+      <li class="linha-dupla"><span>Custo do kg de sal</span><span>${tt.custoKgSal !== null ? U().reaisQ(tt.custoKgSal, '/kg', 2) : SEM_DADO}</span></li>
     </ul>
+    ${tabelaPorInsumo(tt.porInsumo)}
   </section>
   <button class="btn verde grande" data-acao="whats">${ic('whats', 44, 2.2)} ENVIAR NO WHATSAPP</button>
   <button class="btn" data-acao="pdf">${ic('baixar', 32, 2.4)} BAIXAR PDF</button>` : '<p class="vazio">Nenhuma mistura registrada ainda.</p>'}
@@ -101,8 +118,9 @@ window.App = window.App || {};
     },
 
     // COMPRAS SEM PREÇO PAGO: lista para o dono informar o preço de cada chegada
-    async comprasSemPreco() {
+    async comprasSemPreco({ volta }) {
       const lista = await comprasSemPreco();
+      const voltaPara = volta || 'dono';
       return {
         fala: lista.length ? `${lista.length} ${lista.length === 1 ? 'chegada sem preço pago' : 'chegadas sem preço pago'}. Toque numa para escrever quanto pagou.` : 'Todas as chegadas têm preço pago.',
         html: `
@@ -115,17 +133,18 @@ window.App = window.App || {};
     : `<p><span class="selo verde">${ic('certo', 16, 3)}TODAS COM PREÇO PAGO</span></p>`}
 </main>`,
         ligar(r) {
-          U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
-          U().ao(r, '[data-entrada]', (b) => A.ir('precoCompra', { entradaId: b.dataset.entrada, volta: 'comprasSemPreco' }));
+          U().ao(r, '[data-acao=voltar]', () => A.ir(voltaPara));
+          U().ao(r, '[data-entrada]', (b) => A.ir('precoCompra', { entradaId: b.dataset.entrada, volta: 'comprasSemPreco', voltaParams: { volta: voltaPara } }));
         },
       };
     },
 
     // PREÇO PAGO numa chegada: preço do saco (ou do kg, a granel) ou o total da nota
-    async precoCompra({ entradaId, volta }) {
-      const voltar = () => A.ir(volta || 'registros');
+    async precoCompra({ entradaId, volta, voltaParams }) {
+      const voltar = () => A.ir(volta || 'registros', voltaParams || {});
       const e = await A.db.pegar('entradas', entradaId);
-      if (!e) return A.telas[volta || 'registros']({});
+      if (!e) return A.telas[volta || 'registros'](voltaParams || {});
+      const forn = await C().fornecedores(e.insumoId);
       const saco = e.unidade !== 'kg' && e.kgPorUnidade > 0 ? e.kgPorUnidade : 0;
       const atual = e.precoKg > 0 ? e.precoKg : null;
       return {
@@ -144,6 +163,10 @@ window.App = window.App || {};
   <label class="rotulo" for="preco-total">Ou o total pago nesta chegada</label>
   <div class="campo-linha"><span class="sufixo">R$</span><input id="preco-total" class="campo" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00"><span class="sufixo">total</span></div>
   <p class="preco-kg" id="preco-conta" aria-live="polite"></p>
+  <label class="rotulo" for="fornecedor">Fornecedor (opcional)</label>
+  <input id="fornecedor" class="campo" type="text" autocomplete="off" autocapitalize="words" maxlength="40" list="lista-forn"
+    placeholder="Ex.: Agropecuária Boa Vista" value="${esc(e.fornecedor || forn.ultimo || '')}">
+  <datalist id="lista-forn">${forn.recentes.map((f) => `<option value="${esc(f)}">`).join('')}</datalist>
   <p class="erro" role="alert" hidden>${ic('atencao', 28)} <span>Escreva o preço do ${saco ? 'saco' : 'kg'} ou o total pago.</span></p>
   <button class="btn verde grande" data-acao="salvar">${ic('certo', 44, 3)} SALVAR</button>
   ${atual !== null ? '<button class="btn" data-acao="tirar">Tirar o preço pago</button>' : ''}
@@ -169,9 +192,14 @@ window.App = window.App || {};
           const salvar = async (pk, b) => {
             b.disabled = true;
             try {
-              const res = await C().informarPrecoCompra(e.id, pk);
+              const res = await C().informarPrecoCompra(e.id, pk, { fornecedor: r.querySelector('#fornecedor').value });
               await voltar();
-              A.mostrarAviso(pk ? `Preço pago salvo${res.misturas ? ` · ${res.misturas} ${res.misturas === 1 ? 'mistura recalculada' : 'misturas recalculadas'}` : ''}` : 'Preço pago tirado');
+              if (res.alerta) {
+                A.mostrarAviso(res.alerta, 'laranja');
+                if (window.speechSynthesis) A.voz.falar('Atenção. ' + res.alerta + '.');
+              } else {
+                A.mostrarAviso(pk ? `Preço pago salvo${res.misturas ? ` · ${res.misturas} ${res.misturas === 1 ? 'mistura recalculada' : 'misturas recalculadas'}` : ''}` : 'Preço pago tirado');
+              }
             } catch (err) {
               console.error(err);
               b.disabled = false;
@@ -184,6 +212,82 @@ window.App = window.App || {};
             salvar(pk, b);
           });
           U().ao(r, '[data-acao=tirar]', (b) => salvar(null, b));
+        },
+      };
+    },
+
+    // PREÇOS DOS INSUMOS: para cada insumo, a última compra com preço (saco e kg), o custo médio do que está no
+    // galpão, o fornecedor e o histórico das chegadas com a variação em relação à compra anterior com preço.
+    async precosInsumos() {
+      const d = await C().dadosDeCusto();
+      const insumos = d.insumos.slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      const pendentes = d.entradas.filter((e) => !(e.precoKg > 0)).length;
+      const reaisT = (v) => U().reaisTexto(v, 2);
+      const falas = ['Preços dos insumos.'];
+      const blocos = insumos.map((ins) => {
+        const u = C().unidade(ins);
+        const porUn = u.granel ? 'kg' : u.um;
+        const compras = d.entradas.filter((e) => e.insumoId === ins.id).sort((a, b) => b.quando.localeCompare(a.quando));
+        const ultima = compras.find((e) => e.precoKg > 0) || null;
+        const ultimaUn = ultima ? (ultima.kgPorUnidade ? ultima.precoKg * ultima.kgPorUnidade : ultima.precoKg) : null;
+        const medio = A.custoCalc.custoHoje(ins, d);
+        const cad = C().precoKg(ins);
+        if (ultima) falas.push(`${ins.nome}: ${reaisT(ultimaUn)} reais o ${porUn}${ultima.fornecedor ? ', de ' + ultima.fornecedor : ''}.`);
+        else falas.push(`${ins.nome}: nenhuma compra com preço.`);
+        const linha = (e) => {
+          const qtd = e.unidade === 'kg' || !e.kgPorUnidade
+            ? U().kgQ(e.kg)
+            : `${U().q(C().numero(e.quantidade), esc(C().nomeUnidade(e.quantidade, ins)))} × ${U().kgQ(e.kgPorUnidade)}`;
+          let preco;
+          let varia = '';
+          if (e.precoKg > 0) {
+            const un = e.kgPorUnidade ? e.precoKg * e.kgPorUnidade : e.precoKg;
+            preco = U().reaisQ(un, '/' + (e.kgPorUnidade ? porUn : 'kg'), 2);
+            const pct = C().variacaoPreco(e, C().compraAnterior(e, d.entradas));
+            if (pct !== null) {
+              const r = Math.round(pct);
+              if (pct > C().LIMITE_ALTA) varia = `<span class="selo laranja variacao">${ic('atencao', 16, 2.6)}+${r}%</span>`;
+              else varia = `<span class="variacao ${r > 0 ? 'sobe' : r < 0 ? 'desce' : ''}">${r > 0 ? '+' : ''}${r}%</span>`;
+            }
+          } else {
+            preco = `<span class="selo laranja">${ic('atencao', 16, 2.6)}SEM PREÇO</span> <button class="btn-pequeno" data-entrada="${esc(e.id)}">INFORMAR</button>`;
+          }
+          return `<li class="compra">
+            <span class="linha-dupla"><b>${esc(C().quando(e.quando))}</b><span>${preco} ${varia}</span></span>
+            <span class="detalhe">${qtd}${e.fornecedor ? ' · ' + esc(e.fornecedor) : ''}${e.precoKg > 0 && e.kgPorUnidade ? ' · ' + U().reaisQ(e.precoKg, '/kg', 2) : ''}</span>
+          </li>`;
+        };
+        return `
+  <section class="secao preco-insumo">
+    <h2>${esc(ins.nome)}</h2>
+    <ul class="lista comparacao">
+      <li class="linha-dupla"><span>Última compra</span><b>${ultima
+        ? `${U().reaisQ(ultimaUn, '/' + (ultima.kgPorUnidade ? porUn : 'kg'), 2)}${ultima.kgPorUnidade ? ' · ' + U().reaisQ(ultima.precoKg, '/kg', 2) : ''}`
+        : SEM_DADO}</b></li>
+      ${ultima ? `<li class="linha-dupla"><span>Data · fornecedor</span><span>${esc(C().quando(ultima.quando))} · ${ultima.fornecedor ? esc(ultima.fornecedor) : '—'}</span></li>` : ''}
+      <li class="linha-dupla"><span>Custo médio no galpão</span><span>${medio.precoKg !== null ? U().reaisQ(medio.precoKg, '/kg', 2) : SEM_DADO}${medio.precoKg !== null && medio.estimado ? ' ' + ESTIMADO : ''}</span></li>
+      <li class="linha-dupla"><span>Preço cadastrado</span><span>${cad !== null ? U().reaisQ(cad, '/kg', 2) : SEM_DADO}</span></li>
+    </ul>
+    <h3>Compras</h3>
+    ${compras.length ? `<ul class="lista compras">${compras.map(linha).join('')}</ul>` : '<p class="vazio">Nenhuma chegada registrada.</p>'}
+  </section>`;
+      });
+      return {
+        fala: falas.join(' '),
+        html: `
+<main class="tela painel">
+  <div class="topo">${U().btnVoltar()}<h1 class="titulo">PREÇOS DOS INSUMOS</h1>${U().btnFalar()}</div>
+  ${pendentes ? `<button class="alerta laranja alerta-preco" data-acao="pendentes">${ic('atencao', 40, 2.4)}<div>
+    <b>${pendentes} ${pendentes === 1 ? 'chegada sem preço pago' : 'chegadas sem preço pago'}</b><span>Toque para informar o preço.</span></div></button>` : ''}
+  <p class="ajuda">Custo médio = média dos lotes que estão no galpão (o mesmo custo usado nas misturas). ${ESTIMADO} = parte do estoque não tem preço pago e entrou pelo preço cadastrado. A porcentagem compara o preço do kg com a compra anterior; acima de ${C().LIMITE_ALTA}% fica amarelo.</p>
+  <button class="btn" data-acao="atualizar">${ic('saco', 30, 2)} ATUALIZAR PREÇOS CADASTRADOS</button>
+  ${blocos.join('') || '<p class="vazio">Nenhum insumo cadastrado.</p>'}
+</main>`,
+        ligar(r) {
+          U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
+          U().ao(r, '[data-acao=pendentes]', () => A.ir('comprasSemPreco', { volta: 'precosInsumos' }));
+          U().ao(r, '[data-acao=atualizar]', () => A.ir('precos', { volta: 'precosInsumos' }));
+          U().ao(r, '[data-entrada]', (b) => A.ir('precoCompra', { entradaId: b.dataset.entrada, volta: 'precosInsumos' }));
         },
       };
     },

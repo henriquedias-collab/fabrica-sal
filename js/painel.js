@@ -206,8 +206,10 @@ window.App = window.App || {};
       const urgentes = d.estoque.filter((e) => e.nivel === 'vermelho');
       const ep = epoca ? C().EPOCAS[epoca] : null;
       const troca = C().avisoTrocaEpoca(epoca, meses);
+      const semPreco = (await A.gasto.comprasSemPreco()).length;
       const falas = [`Painel dos últimos 7 dias. ${d.producao.n} misturas, ${n(d.producao.kg)} quilos de sal.`];
       if (troca) falas.push(`Atenção: hora de trocar para o sal ${C().EPOCAS[troca.para].fala}.`);
+      if (semPreco) falas.push(`${semPreco} ${semPreco === 1 ? 'chegada sem preço pago' : 'chegadas sem preço pago'}.`);
       if (abertos.length) falas.push(`${abertos.length} ${abertos.length === 1 ? 'problema aberto' : 'problemas abertos'}.`);
       urgentes.forEach((e) => falas.push(`${e.insumo.nome}: ${e.dias === null ? 'estoque acabando' : 'acaba em ' + e.dias + (e.dias === 1 ? ' dia' : ' dias')}.`));
       return {
@@ -220,6 +222,8 @@ window.App = window.App || {};
     ${U().btnFalar()}</div>
   ${troca ? `<button class="alerta laranja alerta-botao alerta-troca" data-acao="ver-epoca">${ic('atencao', 40, 2.4)}<div>
     <b>Hora de trocar para o sal ${C().EPOCAS[troca.para].fala}</b><span>Pelo mês marcado. Toque para marcar a época quando trocar.</span></div></button>` : ''}
+  ${semPreco ? `<button class="alerta laranja alerta-preco" data-acao="ver-sem-preco">${ic('atencao', 40, 2.4)}<div>
+    <b>${semPreco} ${semPreco === 1 ? 'chegada sem preço pago' : 'chegadas sem preço pago'}</b><span>Toque para informar quanto pagou: o gasto fica exato.</span></div></button>` : ''}
   ${abertos.length ? `<button class="alerta vermelho alerta-botao" data-acao="ver-problemas">${ic('problema', 40, 2.4)}<div>
     <b>${abertos.length} ${abertos.length === 1 ? 'problema aberto' : 'problemas abertos'}</b><span>Toque para ver</span></div></button>` : ''}
   ${cartaoProducao(d.producao)}
@@ -236,6 +240,7 @@ window.App = window.App || {};
         ligar(r) {
           U().ao(r, '[data-acao=voltar]', () => A.ir('dono'));
           U().ao(r, '[data-acao=contar]', () => A.ir('contarEstoque'));
+          U().ao(r, '[data-acao=ver-sem-preco]', () => A.ir('comprasSemPreco', { volta: 'painel' }));
           A.pdf.carregar().catch(() => {}); // deixa o gerador de PDF pronto (o celular só compartilha logo depois do toque)
           U().ao(r, '[data-pdf]', async (b) => {
             b.disabled = true;

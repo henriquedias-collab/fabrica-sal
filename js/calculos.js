@@ -601,12 +601,43 @@ window.App = window.App || {};
     return mudadas.length;
   }
 
+  const LIMITE_ALTA = 10; // % acima da compra anterior que gera o aviso amarelo
+
+  // Compra anterior COM preço do mesmo insumo (a mais nova antes desta chegada) ou null
+  function compraAnterior(e, entradas) {
+    return entradas.filter((x) => x.insumoId === e.insumoId && x.id !== e.id && x.precoKg > 0 && x.quando < e.quando)
+      .sort((a, b) => b.quando.localeCompare(a.quando))[0] || null;
+  }
+
+  // % de diferença do preço do kg em relação à compra anterior (null = não dá para comparar)
+  function variacaoPreco(e, anterior) {
+    if (!(e && e.precoKg > 0) || !(anterior && anterior.precoKg > 0)) return null;
+    return (e.precoKg / anterior.precoKg - 1) * 100;
+  }
+
+  // "Ureia: preço 15% acima da última compra"
+  function textoAlertaPreco(e) {
+    const a = e && e.alertaPreco;
+    return a ? `${e.insumoNome}: preço ${Math.round(a.pct)}% acima da última compra` : '';
+  }
+
   // PREÇO PAGO numa chegada (R$/kg; null = tirar). Se for a compra mais recente com preço, vira o preço cadastrado.
-  async function informarPrecoCompra(entradaId, precoKg) {
+  // extra.fornecedor (opcional): guarda/troca o fornecedor desta chegada.
+  // Mais de 10% acima da compra anterior com preço: grava entrada.alertaPreco (fica registrado) e devolve o texto.
+  async function informarPrecoCompra(entradaId, precoKg, extra) {
     const e = await App.db.pegar('entradas', entradaId);
     if (!e) throw new Error('Chegada não encontrada');
-    const novo = Object.assign({}, e, { precoKg: precoKg > 0 ? Math.round(precoKg * 10000) / 10000 : null });
-    const outras = (await App.db.todos('entradas')).filter((x) => x.insumoId === e.insumoId && x.id !== e.id && x.precoKg > 0);
+    const novo = Object.assign({}, e, { precoKg: precoKg > 0 ? Math.round(precoKg * 1000000) / 1000000 : null });
+    if (extra && extra.fornecedor !== undefined) novo.fornecedor = String(extra.fornecedor || '').trim().replace(/\s+/g, ' ') || null;
+    const todas = await App.db.todos('entradas');
+    const outras = todas.filter((x) => x.insumoId === e.insumoId && x.id !== e.id && x.precoKg > 0);
+    const anterior = compraAnterior(e, todas);
+    const pct = variacaoPreco(novo, anterior);
+    if (pct !== null && pct > LIMITE_ALTA) {
+      novo.alertaPreco = { pct: Math.round(pct * 10) / 10, anteriorId: anterior.id, anteriorPrecoKg: anterior.precoKg, registradoEm: new Date().toISOString() };
+    } else {
+      delete novo.alertaPreco;
+    }
     const maisNova = novo.precoKg > 0 && !outras.some((x) => x.quando > e.quando);
     const ins = maisNova ? await App.db.pegar('insumos', e.insumoId) : null;
     await App.db.transacao(['entradas', 'insumos'], (l) => {
@@ -614,13 +645,30 @@ window.App = window.App || {};
       if (ins) l('insumos').put(Object.assign({}, ins, { precoKg: novo.precoKg, precoPorUnidade: null }));
     });
     const misturas = await recalcularEstimados(e.precoKg > 0 ? { insumoId: e.insumoId, desde: e.quando } : null);
-    return { entrada: novo, cadastroAtualizado: !!ins, misturas };
+    return { entrada: novo, cadastroAtualizado: !!ins, misturas, alerta: textoAlertaPreco(novo) };
+  }
+
+  // Fornecedores já usados: o último deste insumo (sugestão) e os mais recentes de todos (botões)
+  async function fornecedores(insumoId) {
+    const lista = (await App.db.todos('entradas')).filter((e) => e.fornecedor).sort((a, b) => b.quando.localeCompare(a.quando));
+    const ultimo = (lista.find((e) => e.insumoId === insumoId) || {}).fornecedor || null;
+    const recentes = [];
+    lista.forEach((e) => { if (!recentes.some((f) => f.toLowerCase() === e.fornecedor.toLowerCase())) recentes.push(e.fornecedor); });
+    return { ultimo, recentes: recentes.slice(0, 6) };
+  }
+
+  // Última compra com preço de um insumo (para mostrar na chegada) ou null
+  async function ultimaCompraComPreco(insumoId) {
+    return (await App.db.todos('entradas')).filter((e) => e.insumoId === insumoId && e.precoKg > 0)
+      .sort((a, b) => b.quando.localeCompare(a.quando))[0] || null;
   }
 
   // Chegou insumo: soma ao estoque (sempre em kg) e registra a entrada (tudo junto).
   // kgPorUnidade = peso de cada saco desta compra. O peso mais recente vira o "saco atual" do insumo
   // (usado na mistura e para mostrar o estoque em sacos); o estoque não muda de valor, só de leitura.
-  async function salvarEntrada({ insumo, quantidade, kgPorUnidade, pessoa }) {
+  // precoKg (opcional): preço pago informado na hora (R$/kg). Sem preço = "preço pendente", o dono completa depois.
+  // fornecedor (opcional).
+  async function salvarEntrada({ insumo, quantidade, kgPorUnidade, pessoa, precoKg, fornecedor }) {
     const ins = await App.db.pegar('insumos', insumo.id);
     const { kgPor, granel } = unidade(ins);
     const pesoCada = granel ? null : (kgPorUnidade > 0 ? kgPorUnidade : kgPor);
@@ -642,13 +690,19 @@ window.App = window.App || {};
       pessoaId: pessoa ? pessoa.id : null,
       pessoaNome: pessoa ? pessoa.nome : '',
       quando: new Date().toISOString(),
+      fornecedor: String(fornecedor || '').trim().replace(/\s+/g, ' ') || null,
       exemplo: false,
     };
     await App.db.transacao(['entradas', 'insumos'], (l) => {
       l('entradas').put(entrada);
       l('insumos').put(ins);
     });
-    return { entrada, insumo: ins };
+    if (precoKg > 0) {
+      // mesmo caminho do PREÇO PAGO do dono: preço cadastrado, recálculo e aviso de alta
+      const res = await informarPrecoCompra(entrada.id, precoKg);
+      return { entrada: res.entrada, insumo: await App.db.pegar('insumos', ins.id), alerta: res.alerta };
+    }
+    return { entrada, insumo: ins, alerta: '' };
   }
 
   function iniciais(nome) {
@@ -681,5 +735,6 @@ window.App = window.App || {};
     montarMistura, novaMistura, progresso, totalColocadoKg, gravarAndamento, carregarAndamento, apagarAndamento,
     faltando, concluirMistura, salvarEntrada, iniciais, quando,
     precificarMistura, recalcularEstimados, informarPrecoCompra, dadosDeCusto,
+    LIMITE_ALTA, compraAnterior, variacaoPreco, textoAlertaPreco, fornecedores, ultimaCompraComPreco,
   };
 })();

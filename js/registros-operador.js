@@ -70,14 +70,14 @@ window.App = window.App || {};
     },
 
     // CHEGOU INSUMO: quantos? e de quantos kg cada um?
-    async chegadaContar({ insumoId }) {
+    async chegadaContar({ insumoId, n: n0, peso: p0 }) {
       const ins = await A.db.pegar('insumos', insumoId);
       if (!ins) return A.telas.chegada();
       const u = C().unidade(ins);
       const num = (x) => C().numero(x);
       const passo = u.granel ? 10 : 1; // a granel conta de 10 em 10 kg
-      let n = 0;
-      let peso = u.kgPor; // peso de cada saco nesta chegada (começa com o saco atual do insumo)
+      let n = n0 > 0 ? n0 : 0; // volta da tela do preço: mantém o que já foi contado
+      let peso = p0 > 0 ? p0 : u.kgPor; // peso de cada saco nesta chegada (começa com o saco atual = o da última compra)
       // Só botões: os pesos comuns + o saco atual. Peso fora disso, só o dono cadastra (Área do dono).
       const opcoes = [...new Set([...(PESOS_COMUNS[ins.unidade || 'saco'] || []), u.kgPor].filter((x) => x > 0))].sort((a, b) => a - b);
       const nome = (q) => C().nomeUnidade(q, ins);
@@ -87,9 +87,9 @@ window.App = window.App || {};
         ? `${num(n)} quilos.`
         : `${n} ${nome(n)} de ${num(peso)} quilos. ${n} vezes ${num(peso)} dá ${num(n * peso)} quilos.`);
       const falaTela = () => (u.granel
-        ? `Quantos quilos de ${ins.nome} chegaram? Cada toque no mais soma 10 quilos. Agora: ${falaConta()} Depois toque em guardar.`
+        ? `Quantos quilos de ${ins.nome} chegaram? Cada toque no mais soma 10 quilos. Agora: ${falaConta()} Depois toque em próximo.`
         : `Quantos ${u.varios} de ${ins.nome} chegaram? Toque no mais para cada ${u.um}. Embaixo, toque no peso de cada ${u.um}. ` +
-          `Agora: ${falaConta()} Depois toque em guardar.`);
+          `Agora: ${falaConta()} Depois toque em próximo.`);
 
       return {
         fala: falaTela(),
@@ -112,7 +112,7 @@ window.App = window.App || {};
     <div class="pesos" id="pesos" role="group" aria-label="Peso de cada ${esc(u.um)}"></div>`}
     <div class="conta" id="conta" aria-live="polite"></div>
     <div class="espaco"></div>
-    <button class="btn verde grande" data-acao="guardar" disabled>${ic('certo', 48, 3)} GUARDAR</button>
+    <button class="btn verde grande" data-acao="guardar" disabled>${ic('seguir', 48, 3)} PRÓXIMO</button>
   </div>
 </main>`,
         ligar(r) {
@@ -157,24 +157,123 @@ window.App = window.App || {};
           mostrar();
 
           U().ao(r, '[data-acao=voltar]', () => A.ir('chegada'));
-          U().ao(r, '[data-acao=guardar]', async () => {
+          U().ao(r, '[data-acao=guardar]', () => {
             if (n <= 0) return;
-            btnGuardar.disabled = true;
-            try {
-              const res = await C().salvarEntrada({ insumo: ins, quantidade: n, kgPorUnidade: peso, pessoa: A.estado.pessoa });
-              A.ir('chegadaPronta', res);
-            } catch (e) {
-              btnGuardar.disabled = false;
-              A.mostrarAviso('Não guardou. Tente de novo.', 'laranja');
-            }
+            A.ir('chegadaPreco', { insumoId: ins.id, n, peso });
           });
         },
       };
     },
 
+    // CHEGOU INSUMO: preço de cada saco e fornecedor (os dois OPCIONAIS). Quem não sabe toca em
+    // "NÃO SEI O PREÇO AGORA": a chegada fica com preço pendente e o dono completa depois, com a nota.
+    async chegadaPreco({ insumoId, n, peso }) {
+      const ins = await A.db.pegar('insumos', insumoId);
+      if (!ins || !(n > 0)) return A.telas.chegada();
+      const u = C().unidade(ins);
+      const num = (x) => C().numero(x);
+      const kg = u.granel ? n : Math.round(n * peso * 10) / 10;
+      const [ultima, forn] = await Promise.all([C().ultimaCompraComPreco(ins.id), C().fornecedores(ins.id)]);
+      const porUn = u.granel ? 'kg' : u.um; // preço "por saco" (a granel: por kg)
+      const pesoUn = u.granel ? 1 : peso;
+      const ultimaUn = ultima ? (u.granel ? ultima.precoKg : ultima.precoKg * (ultima.kgPorUnidade || peso)) : null;
+      const ultimaPeso = ultima && !u.granel ? (ultima.kgPorUnidade || peso) : null;
+      let escolhido = forn.ultimo; // sugere o último fornecedor deste insumo
+      const opcoesForn = [...new Set([forn.ultimo, ...forn.recentes].filter(Boolean))].slice(0, 6);
+      const reais = (v) => U().reaisTexto(v, 2);
+      const falaQtd = u.granel ? `${num(kg)} quilos de ${ins.nome}.` : `${n} ${C().nomeUnidade(n, ins)} de ${num(peso)} quilos de ${ins.nome}.`;
+      const fala = `Preço. ${falaQtd} Se souber o preço de cada ${porUn}, escreva e toque em guardar com preço. ` +
+        `Se não souber, toque em: não sei o preço agora. O dono completa depois.` +
+        (ultima ? ` Na última compra, o ${porUn}${ultimaPeso ? ` de ${num(ultimaPeso)} quilos` : ''} custou ${reais(ultimaUn)} reais.` : '');
+      return {
+        fala,
+        html: `
+<main class="tela">
+  <div class="topo">${U().btnVoltar()}<h1 class="titulo">PREÇO</h1>${U().btnFalar()}</div>
+  <div class="linha-chegada">${U().fotoInsumo(ins, 84)}<div><b>${esc(ins.nome.toUpperCase())}</b>
+    <span>${u.granel ? U().kgQ(kg) : `${U().q(n, esc(C().nomeUnidade(n, ins)))} × ${U().kgQ(peso)} = ${U().kgQ(kg)}`}</span></div></div>
+  <label class="rotulo-peso" for="preco-saco">PREÇO DE CADA ${esc(porUn.toUpperCase())} <small>(se souber)</small></label>
+  <div class="campo-linha preco-grande"><span class="sufixo">R$</span>
+    <input id="preco-saco" class="campo" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Preço de cada ${esc(porUn)} em reais">
+    <span class="sufixo">/${esc(porUn)}</span></div>
+  ${ultima ? `<p class="ajuda">Última compra (${esc(C().quando(ultima.quando))}): ${U().reaisQ(ultimaUn, '/' + porUn + (ultimaPeso ? ' de ' + num(ultimaPeso) + ' kg' : ''), 2)}</p>` : ''}
+  <p class="conta-preco" id="conta-preco" aria-live="polite"></p>
+  <div class="rotulo-peso">FORNECEDOR <small>(se souber)</small></div>
+  <div class="fornecedores" id="fornecedores" role="group" aria-label="Fornecedor"></div>
+  <div class="campo-linha" id="forn-outro" hidden>
+    <input id="forn-nome" class="campo" type="text" autocomplete="off" autocapitalize="words" maxlength="40" placeholder="Nome do fornecedor" aria-label="Nome do fornecedor">
+  </div>
+  <button class="btn verde grande" data-acao="com-preco" disabled>${ic('certo', 48, 3)} GUARDAR COM PREÇO</button>
+  <button class="btn laranja grande" data-acao="sem-preco">${ic('dinheiro', 44, 2)} NÃO SEI O PREÇO AGORA</button>
+</main>`,
+        ligar(r) {
+          const campo = r.querySelector('#preco-saco');
+          const btnCom = r.querySelector('[data-acao=com-preco]');
+          const caixaForn = r.querySelector('#fornecedores');
+          const linhaOutro = r.querySelector('#forn-outro');
+          const nomeOutro = r.querySelector('#forn-nome');
+          const valor = () => { const v = U().lerNumero(campo.value); return v > 0 && v < 1000000 ? v : null; };
+          const desenharForn = () => {
+            caixaForn.innerHTML = opcoesForn.map((f) => {
+              const sel = escolhido === f;
+              return `<button class="opcao forn" data-forn="${esc(f)}" aria-pressed="${sel}">${sel ? ic('certo', 18, 3.4) : ''}${esc(f)}</button>`;
+            }).join('') + `<button class="opcao forn outro" data-acao="forn-outro" aria-pressed="${!linhaOutro.hidden}">${ic('mais', 18, 3)}OUTRO</button>`;
+          };
+          const mostrar = () => {
+            const v = valor();
+            btnCom.disabled = !v;
+            r.querySelector('#conta-preco').innerHTML = v
+              ? `${u.granel ? '' : `${n} × ${U().reaisQ(v, '', 2)} = `}<b>total ${U().reaisQ(v * (u.granel ? kg : n), '', 2)}</b>${u.granel ? '' : ` · ${U().reaisQ(v / pesoUn, '/kg', 2)}`}`
+              : '';
+            A.estado.fala = fala + (v ? ` Escrito: ${reais(v)} reais cada ${porUn}. Total ${reais(v * (u.granel ? kg : n))} reais.` : '');
+          };
+          caixaForn.addEventListener('click', (ev) => {
+            const b = ev.target.closest('button');
+            if (!b) return;
+            if (b.dataset.acao === 'forn-outro') {
+              linhaOutro.hidden = false;
+              escolhido = null;
+              desenharForn();
+              nomeOutro.focus();
+              return;
+            }
+            escolhido = escolhido === b.dataset.forn ? null : b.dataset.forn; // tocar de novo tira
+            linhaOutro.hidden = true;
+            nomeOutro.value = '';
+            desenharForn();
+          });
+          campo.addEventListener('input', mostrar);
+          desenharForn();
+          mostrar();
+          const fornecedor = () => (linhaOutro.hidden ? escolhido : nomeOutro.value.trim()) || null;
+          const guardar = async (precoKg, botao) => {
+            r.querySelectorAll('[data-acao=com-preco], [data-acao=sem-preco]').forEach((b) => { b.disabled = true; });
+            try {
+              const res = await C().salvarEntrada({ insumo: ins, quantidade: n, kgPorUnidade: peso, pessoa: A.estado.pessoa, precoKg, fornecedor: fornecedor() });
+              A.ir('chegadaPronta', res);
+            } catch (e) {
+              console.error(e);
+              botao.disabled = false;
+              mostrar();
+              r.querySelector('[data-acao=sem-preco]').disabled = false;
+              A.mostrarAviso('Não guardou. Tente de novo.', 'laranja');
+            }
+          };
+          U().ao(r, '[data-acao=voltar]', () => A.ir('chegadaContar', { insumoId: ins.id, n, peso }));
+          U().ao(r, '[data-acao=com-preco]', (b) => { const v = valor(); if (v) guardar(v / pesoUn, b); });
+          U().ao(r, '[data-acao=sem-preco]', (b) => guardar(null, b));
+        },
+      };
+    },
+
     // CHEGOU INSUMO: guardado (tela verde)
-    async chegadaPronta({ entrada, insumo }) {
+    async chegadaPronta({ entrada, insumo, alerta }) {
       const p = A.estado.pessoa;
+      const temPreco = entrada.precoKg > 0;
+      const porUn = C().unidade(insumo).granel ? 'kg' : C().unidade(insumo).um;
+      const precoUn = temPreco ? (entrada.kgPorUnidade ? entrada.precoKg * entrada.kgPorUnidade : entrada.precoKg) : null;
+      const reais = (v) => U().reaisTexto(v, 2);
+      const anteriorUn = entrada.alertaPreco && entrada.kgPorUnidade ? entrada.alertaPreco.anteriorPrecoKg * entrada.kgPorUnidade : null;
       const u = C().unidade(insumo);
       const num = (x) => C().numero(x);
       const q = entrada.quantidade;
@@ -186,10 +285,16 @@ window.App = window.App || {};
           `${q} vezes ${num(pesoCada)} dá ${num(entrada.kg)} quilos.`;
       return {
         tom: 'verde',
-        fala: `Guardado. ${falaChegou} Agora o estoque tem ${num(insumo.estoqueKg)} quilos.${entrada.pesoDiferente ? ` O saco atual agora é de ${num(pesoCada)} quilos.` : ''} Obrigado, ${p.nome}.`,
+        fala: (alerta ? `Atenção! ${alerta}. ` : '') +
+          `Guardado. ${falaChegou} Agora o estoque tem ${num(insumo.estoqueKg)} quilos.${entrada.pesoDiferente ? ` O saco atual agora é de ${num(pesoCada)} quilos.` : ''}` +
+          (temPreco ? ` Preço: ${reais(precoUn)} reais cada ${porUn}.` : ' Preço pendente: o dono completa depois.') +
+          ` Obrigado, ${p.nome}.`,
         html: `
 <main class="tela verde">
   <div class="topo"><span class="vago"></span><span class="espaco"></span>${U().btnFalar()}</div>
+  ${alerta ? `<div class="alerta laranja alerta-alta" role="alert">${ic('atencao', 56, 2.4)}<div>
+    <b>${esc(alerta.toUpperCase())}</b>
+    <span>${anteriorUn !== null ? `Antes: R$ ${esc(reais(anteriorUn))} · agora: R$ ${esc(reais(precoUn))} o ${esc(porUn)}. ` : ''}Ficou registrado para o dono ver.</span></div></div>` : ''}
   <div class="circulo-ok">${ic('certo', 100, 3)}</div>
   <h1 class="titulo-pronta">GUARDADO</h1>
   <div class="bloco-verde total">
@@ -199,11 +304,15 @@ window.App = window.App || {};
   </div>
   <div class="bloco-verde linha-info">${ic('saco', 40, 1.8)}<div><small>Estoque agora</small><b>${U().kgQ(insumo.estoqueKg)}</b></div></div>
   ${entrada.pesoDiferente ? `<div class="bloco-verde linha-info">${ic('ajustes', 40, 1.8)}<div><small>Saco atual de ${esc(insumo.nome)}</small><b>agora é de ${U().kgQ(pesoCada)}</b></div></div>` : ''}
+  <div class="bloco-verde linha-info">${ic('dinheiro', 40, 1.8)}<div><small>Preço${entrada.fornecedor ? ' · ' + esc(entrada.fornecedor) : ''}</small>
+    <b>${temPreco ? `${U().reaisQ(precoUn, '/' + porUn, 2)} · total ${U().reaisQ(entrada.kgPorUnidade ? precoUn * entrada.quantidade : entrada.precoKg * entrada.kg, '', 2)}` : 'pendente: o dono completa depois'}</b></div></div>
   <div class="bloco-verde linha-info">${U().avatar(p, 48)}<div><small>Quem recebeu · quando</small><b>${esc(p.nome)} · ${esc(C().quando(entrada.quando))}</b></div></div>
   <div class="espaco"></div>
   <button class="btn branco-no-verde" data-acao="inicio">${ic('casa', 44, 2.4)} INÍCIO</button>
 </main>`,
         ligar(r) {
+          // preço bem mais caro: lê o aviso sozinho (o toque em GUARDAR libera a voz)
+          if (alerta && window.speechSynthesis) A.voz.falar(A.estado.fala, r.querySelector('[data-falar]'));
           U().ao(r, '[data-acao=inicio]', () => A.ir('inicio'));
         },
       };

@@ -832,3 +832,36 @@ h1, h2, .titulo, .titulo-pronta, .titulo-falta, .marca, .titulo-painel h1, .seca
 .botoes-pdf .btn-pequeno { gap: 6px; height: 52px; }
 .botoes-pdf.topo-pdf { margin: 0 0 12px; }
 .botoes-pdf.topo-pdf span { margin-right: auto; color: var(--tinta-2); font-size: 17px; }
+
+/* CHEGOU INSUMO: tela do PREÇO (preço do saco e fornecedor, os dois opcionais) */
+.linha-chegada { display: flex; align-items: center; gap: 14px; margin: 4px 0 14px; }
+.linha-chegada .foto-insumo { width: 84px; height: 84px; flex: none; border-radius: 20px; }
+.linha-chegada .foto-insumo span { display: none; }
+.linha-chegada .foto-insumo svg { width: 48px; height: 48px; }
+.linha-chegada > div:last-child { flex: 1; min-width: 0; }
+.linha-chegada > div > b { display: block; font-size: 24px; }
+.linha-chegada > div > span { font-size: 20px; }
+.preco-grande .campo { min-height: 96px; font-size: 48px; font-weight: 700; text-align: right; }
+.preco-grande .sufixo { font-size: 26px; font-weight: 700; }
+.conta-preco { font-size: 22px; min-height: 30px; margin: 8px 0 14px; }
+.fornecedores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+.opcao.forn { min-height: 64px; font-size: 19px; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; }
+.opcao.forn.outro { border-style: dashed; border-color: var(--borda-forte); }
+#forn-outro { margin-bottom: 10px; }
+.btn.laranja.grande { font-size: 28px; margin-top: 14px; }
+/* Preço bem mais caro que a última compra: aviso grande amarelo, sempre com triângulo */
+.alerta-alta { align-items: flex-start; margin-bottom: 14px; box-shadow: 0 5px 0 var(--laranja); }
+.alerta-alta b { font-size: 26px; line-height: 1.2; }
+.alerta-alta span { display: block; margin-top: 6px; }
+
+/* PREÇOS DOS INSUMOS */
+.preco-insumo h3 { margin: 14px 0 6px; font-size: 19px; color: var(--tinta-2); }
+.lista.compras .compra { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-bottom: 2px solid var(--borda); }
+.lista.compras .compra:last-child { border-bottom: 0; }
+.lista.compras .btn-pequeno { margin-left: 6px; }
+.variacao { font-weight: 700; font-size: 17px; margin-left: 6px; white-space: nowrap; }
+.variacao.sobe { color: var(--laranja-texto); }
+.variacao.desce { color: var(--verde-escuro); }
+.selo.laranja.variacao { display: inline-flex; align-items: center; gap: 3px; }
+/* GASTO POR SEMANA: gasto de cada insumo */
+.detalhe.por-insumo { line-height: 1.5; }

@@ -1059,7 +1059,7 @@ window.App = window.App || {};
     <h2>Chegadas de insumo: ${entradas.length}</h2>
     <ul class="lista">
       ${entradas.slice(0, 10).map((e) => `<li><b>${esc(C().quando(e.quando))}</b> · ${esc(e.insumoNome)} · ${esc(e.texto)}<br>
-        Recebido por ${esc(e.pessoaNome || '—')}
+        Recebido por ${esc(e.pessoaNome || '—')}${e.fornecedor ? ' · Fornecedor: ' + esc(e.fornecedor) : ''}${e.alertaPreco ? `<br><span class="selo laranja">${ic('atencao', 16, 2.6)}${esc(C().textoAlertaPreco(e))}</span>` : ''}
         <br>${e.precoKg > 0 ? `Preço pago: ${reaisQ(e.precoKg, '/kg', 2)} <button class="btn-pequeno largo" data-preco="${esc(e.id)}">MUDAR</button>` : `<span class="etiqueta laranja">sem preço pago</span> <button class="btn-pequeno largo" data-preco="${esc(e.id)}">INFORMAR PREÇO</button>`}${e.pesoDiferente ? `<br><span class="etiqueta">saco atual mudou: ${C().numero(e.kgPorUnidadeCadastro)} → ${C().numero(e.kgPorUnidade)} kg</span>` : ''}</li>`).join('') || '<li>Nenhuma.</li>'}
     </ul>
   </section>

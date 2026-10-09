@@ -27,18 +27,37 @@
   // Custo de itens de uma mistura [{ insumoId, kg, precoKg?, precoEstimado? }]: usa o custo GRAVADO na mistura
   // (custo médio do galpão naquele dia, custo-calculo.js). Mistura antiga, sem custo gravado: preço de hoje = estimado.
   // null se faltar preço de algum insumo (semPreco lista os nomes). estimado = algum item não veio do preço pago.
+  // porItem: o custo de cada item ({ insumoId, nome, kg, reais (null = sem preço), estimado }).
   function custo(itens, insPorId) {
     let total = 0;
     let estimado = false;
     const semPreco = [];
-    itens.forEach((it) => {
+    const porItem = [];
+    (itens || []).forEach((it) => {
       const ins = insPorId[it.insumoId];
       const gravado = typeof it.precoKg === 'number' && it.precoKg > 0;
       const p = gravado ? it.precoKg : precoKg(ins);
-      if (!gravado || it.precoEstimado) estimado = true;
-      if (p === null) { const nome = ins ? ins.nome : (it.nome || '?'); if (!semPreco.includes(nome)) semPreco.push(nome); } else total += (it.kg || 0) * p;
+      const est = !gravado || !!it.precoEstimado;
+      if (est) estimado = true;
+      const nome = ins ? ins.nome : (it.nome || '?');
+      if (p === null) { if (!semPreco.includes(nome)) semPreco.push(nome); } else total += (it.kg || 0) * p;
+      porItem.push({ insumoId: it.insumoId, nome, kg: it.kg || 0, reais: p === null ? null : (it.kg || 0) * p, estimado: est && (it.kg || 0) > 0 });
     });
-    return { total: semPreco.length ? null : total, semPreco, estimado: estimado && (itens || []).some((it) => (it.kg || 0) > 0) };
+    return { total: semPreco.length ? null : total, semPreco, estimado: estimado && (itens || []).some((it) => (it.kg || 0) > 0), porItem };
+  }
+
+  // Soma o gasto de cada insumo (lista de porItem): [{ insumoId, nome, kg, reais|null, estimado }], o maior primeiro
+  function somarPorInsumo(listas) {
+    const m = {};
+    listas.forEach((l) => l.forEach((x) => {
+      if (!(x.kg > 0)) return;
+      const a = m[x.insumoId] || (m[x.insumoId] = { insumoId: x.insumoId, nome: x.nome, kg: 0, reais: 0, estimado: false });
+      a.kg += x.kg;
+      a.reais = a.reais === null || x.reais === null ? null : a.reais + x.reais;
+      if (x.estimado) a.estimado = true;
+    }));
+    return Object.values(m).map((a) => Object.assign(a, { kg: Math.round(a.kg * 10) / 10 }))
+      .sort((a, b) => (b.reais === null ? -1 : b.reais) - (a.reais === null ? -1 : a.reais) || b.kg - a.kg);
   }
 
   // Segunda-feira 00:00 da semana de uma data (hora local)
@@ -62,13 +81,17 @@
     let gasto = 0;
     let gastoEstimado = false;
     const semPreco = [];
+    const itensSemana = [];
     misturas.forEach((m) => {
       const c = custo(m.itens, insPorId);
+      itensSemana.push(c.porItem);
       if (c.estimado) gastoEstimado = true;
       c.semPreco.forEach((n) => { if (!semPreco.includes(n)) semPreco.push(n); });
       if (c.total !== null) gasto += c.total;
     });
     const kgFeitos = misturas.reduce((s, m) => s + (m.totalKg || 0), 0);
+    const porInsumo = somarPorInsumo(itensSemana); // gasto de cada insumo na semana
+    const custoKgSal = !semPreco.length && kgFeitos > 0 ? gasto / kgFeitos : null; // R$ por kg de sal feito
 
     // Por lote: kg mandados, g/cabeça/dia, custo/cabeça/dia e comparação com a meta da época
     const lotes = dados.pastos.slice().sort((a, b) => (a.numero || 0) - (b.numero || 0)).map((p) => {
@@ -135,7 +158,7 @@
     return {
       inicio, fim: fimSemana, dias, emAndamento: agora < fimSemana,
       misturas: misturas.length, kgFeitos,
-      gasto: semPreco.length ? null : gasto, gastoEstimado: gastoEstimado && !semPreco.length, semPreco,
+      gasto: semPreco.length ? null : gasto, gastoEstimado: gastoEstimado && !semPreco.length, semPreco, porInsumo, custoKgSal,
       custoCabDia, custoCabDiaEstimado: custoCabDia !== null && comSal.some((l) => l.custoEstimado), lotes, perdas,
     };
   }
@@ -221,6 +244,7 @@
           inicio: ini, rotulo: `${ddmm(ini)} a ${ddmm(domingo)}`, ano: new Date(domingo).getFullYear(),
           emAndamento: s.emAndamento, dias: s.dias,
           misturas: s.misturas, kgFeitos: s.kgFeitos, gasto: s.gasto, gastoEstimado: s.gastoEstimado, semPreco: s.semPreco,
+          porInsumo: s.porInsumo, custoKgSal: s.custoKgSal,
           problemas: s.perdas.quantidade, perdasKg: s.perdas.kg, perdasReais: s.perdas.reais,
           custoCabDia: s.custoCabDia, custoCabDiaEstimado: s.custoCabDiaEstimado,
         });
@@ -228,6 +252,8 @@
     }
     const soma = (campo) => semanas.reduce((a, s) => a + (s[campo] || 0), 0);
     const comCusto = semanas.filter((s) => s.custoCabDia !== null);
+    const comGasto = semanas.filter((s) => s.gasto !== null && s.kgFeitos > 0);
+    const kgComGasto = comGasto.reduce((a, s) => a + s.kgFeitos, 0);
     return {
       versao: 1,
       nomeFazenda: dados.nomeFazenda || '',
@@ -241,6 +267,9 @@
         // média das semanas que têm custo por cabeça
         custoCabDia: comCusto.length ? comCusto.reduce((a, s) => a + s.custoCabDia, 0) / comCusto.length : null,
         custoCabDiaEstimado: comCusto.some((s) => s.custoCabDiaEstimado),
+        // gasto de cada insumo somando todas as semanas e o R$/kg de sal das semanas que têm gasto
+        porInsumo: somarPorInsumo(semanas.map((s) => s.porInsumo)),
+        custoKgSal: kgComGasto > 0 ? comGasto.reduce((a, s) => a + s.gasto, 0) / kgComGasto : null,
       },
       geradoEm: new Date(agora).toISOString(),
     };
